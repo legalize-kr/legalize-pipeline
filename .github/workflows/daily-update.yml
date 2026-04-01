@@ -2,8 +2,11 @@ name: Daily Law Update
 
 on:
   schedule:
-    - cron: '0 15 * * *' # midnight KST (UTC+9)
+    - cron: '0 4 * * *' # 13:00 KST (UTC+9)
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 concurrency:
   group: law-update
@@ -67,12 +70,16 @@ jobs:
           LAW_OC: ${{ secrets.LAW_OC }}
         run: python update.py
 
+      - name: Validate
+        working-directory: workspace/scripts
+        run: python validate.py
+
       - name: Push law changes
         working-directory: workspace
         run: |
           git add -A -- kr/ metadata.json
           git diff --cached --quiet && echo "No changes to push" && exit 0
-          git commit -m "chore: daily law update $(date +%Y-%m-%d)"
+          git commit --author="Junghwan Park <reserve.dev@gmail.com>" -m "chore: daily law update $(date +%Y-%m-%d)"
           git push
 
       - name: Save checkpoint
@@ -91,6 +98,6 @@ jobs:
             git config user.email "bot@legalize.kr"
             git add stats.json
             git diff --cached --quiet && echo "No docs changes" && exit 0
-            git commit -m "chore: update stats.json"
+            git commit --author="Junghwan Park <reserve.dev@gmail.com>" -m "chore: update stats.json"
             git push
           fi
