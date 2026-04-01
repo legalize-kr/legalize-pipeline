@@ -1,7 +1,7 @@
 """Incremental updater for new/amended laws.
 
-Uses search API to find recently changed laws, then fetches full history
-for each to catch intermediate amendments.
+Uses search API to find recently changed laws, then fetches and commits
+only the new versions directly (no full history traversal).
 
 Usage:
     python update.py                    # Update recent laws (default 7 days)
@@ -14,17 +14,18 @@ import argparse
 import logging
 from datetime import datetime, timedelta
 
-from api_client import search_laws
-from checkpoint import get_last_update, set_last_update
-from config import LAW_API_KEY
-from converter import format_date, reset_path_registry
-from import_laws import import_law_with_history
+from api_client import get_law_detail, search_laws
+from checkpoint import get_last_update, get_processed_msts, mark_processed, set_last_update
+from config import KR_DIR, LAW_API_KEY
+from converter import format_date, get_law_path, law_to_markdown, reset_path_registry
+from git_engine import commit_law
+from import_laws import build_commit_msg
 
 logger = logging.getLogger(__name__)
 
 
 def update(days: int = 7, law_type_filter: str | None = None, dry_run: bool = False) -> int:
-    """Query API for recently amended laws, then import full history for each."""
+    """Query API for recently amended laws and import their latest versions."""
     if not LAW_API_KEY:
         logger.error("No API key (LAW_OC) configured. Cannot update.")
         return 0
@@ -37,34 +38,72 @@ def update(days: int = 7, law_type_filter: str | None = None, dry_run: bool = Fa
 
     logger.info(f"Searching amendments from {since} to {today}")
 
-    # Collect unique law names from search results
-    seen_names: set[str] = set()
+    # Collect all search results with their MSTs
+    all_laws: list[dict] = []
     page = 1
     while True:
         result = search_laws(query="", page=page, display=100, date_from=since, date_to=today)
-        for law in result["laws"]:
-            name = law.get("법령명한글", "")
-            if name:
-                seen_names.add(name)
+        all_laws.extend(result["laws"])
         if page * 100 >= result["totalCnt"]:
             break
         page += 1
 
-    logger.info(f"Found {len(seen_names)} unique law names with amendments")
+    # Filter out already-processed MSTs via checkpoint (in-memory, no git log)
+    processed = get_processed_msts()
+    new_laws = [law for law in all_laws if law["법령일련번호"] and law["법령일련번호"] not in processed]
+    new_laws.sort(key=lambda x: x.get("공포일자", ""))
+
+    logger.info(f"Found {len(all_laws)} results, {len(new_laws)} new after checkpoint filter")
 
     committed = 0
     errors = 0
 
-    for i, name in enumerate(sorted(seen_names), 1):
+    for i, law in enumerate(new_laws, 1):
+        mst = law["법령일련번호"]
+        name = law.get("법령명한글", "")
+
         try:
-            count = import_law_with_history(name, law_type_filter, dry_run)
-            committed += count
+            detail = get_law_detail(mst)
+            meta = detail["metadata"]
+            law_type = meta.get("법령구분", "")
+
+            if law_type_filter and law_type_filter != law_type:
+                continue
+
+            fetched_name = meta.get("법령명한글", name)
+            file_path = get_law_path(fetched_name, law_type)
+            abs_path = KR_DIR.parent / file_path
+
+            meta["제개정구분"] = law.get("제개정구분명", meta.get("제개정구분", ""))
+            if not meta.get("공포번호"):
+                meta["공포번호"] = law.get("공포번호", "")
+
+            prom_date = format_date(meta.get("공포일자", ""))
+
+            if dry_run:
+                logger.info(f"  [{i}/{len(new_laws)}] [DRY-RUN] MST={mst} {prom_date} {fetched_name} -> {file_path}")
+                continue
+
+            content = law_to_markdown(detail)
+            abs_path.parent.mkdir(parents=True, exist_ok=True)
+            abs_path.write_text(content, encoding="utf-8")
+
+            commit_msg = build_commit_msg(fetched_name, law_type, mst, meta)
+            if not prom_date or len(prom_date) != 10:
+                prom_date = "2000-01-01"
+
+            result = commit_law(file_path, commit_msg, prom_date, mst, skip_dedup=True)
+            if result:
+                mark_processed(mst)
+                committed += 1
+                logger.info(f"  [{i}/{len(new_laws)}] Committed MST={mst} {prom_date} {fetched_name}")
+
         except Exception as e:
-            logger.error(f"Failed history import for {name}: {e}")
+            logger.error(f"  [{i}/{len(new_laws)}] Failed MST {mst}: {e}")
             errors += 1
 
         if i % 50 == 0:
-            logger.info(f"Progress: {i}/{len(seen_names)} (committed={committed}, errors={errors})")
+            logger.info(f"Progress: {i}/{len(new_laws)} (committed={committed}, errors={errors})")
 
     if not dry_run and committed > 0:
         set_last_update(format_date(today))
