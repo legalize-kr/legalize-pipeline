@@ -1,0 +1,109 @@
+name: Full Law Import
+
+on:
+  workflow_dispatch:
+    inputs:
+      law_type:
+        description: '법령구분 필터 (e.g. 법률, 대통령령)'
+        required: false
+        default: ''
+      limit:
+        description: '최대 import 건수'
+        required: false
+        default: ''
+
+concurrency:
+  group: law-update
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout law repo
+        uses: actions/checkout@v4
+        with:
+          repository: legalize-kr/legalize-kr
+          token: ${{ secrets.REPO_PAT }}
+          fetch-depth: 0
+          path: workspace
+
+      - name: Clean stale scripts dir
+        run: rm -rf workspace/scripts
+
+      - name: Checkout scripts
+        uses: actions/checkout@v4
+        with:
+          path: workspace/scripts
+
+      - name: Checkout docs repo
+        uses: actions/checkout@v4
+        with:
+          repository: legalize-kr/legalize-web
+          token: ${{ secrets.REPO_PAT }}
+          path: docs-repo
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: workspace/scripts/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r workspace/scripts/requirements.txt
+
+      - name: Restore checkpoint
+        uses: actions/cache/restore@v4
+        with:
+          path: workspace/.checkpoint.json
+          key: checkpoint-dummy
+          restore-keys: checkpoint-
+
+      - name: Configure git
+        working-directory: workspace
+        run: |
+          git config user.name "legalize-kr-bot"
+          git config user.email "bot@legalize.kr"
+
+      - name: Run import
+        working-directory: workspace/scripts
+        env:
+          LAW_OC: ${{ secrets.LAW_OC }}
+          LAW_TYPE: ${{ inputs.law_type }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          ARGS=""
+          if [ -n "$LAW_TYPE" ]; then ARGS="$ARGS --law-type $LAW_TYPE"; fi
+          if [ -n "$LIMIT" ]; then ARGS="$ARGS --limit $LIMIT"; fi
+          python import_laws.py $ARGS
+
+      - name: Push law changes
+        working-directory: workspace
+        run: |
+          git add -A -- kr/ metadata.json
+          git diff --cached --quiet && echo "No changes to push" && exit 0
+          git commit -m "chore: full import $(date +%Y-%m-%d)"
+          git push
+
+      - name: Save checkpoint
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: workspace/.checkpoint.json
+          key: checkpoint-${{ github.run_id }}
+
+      - name: Update docs stats
+        run: |
+          if [ -f workspace/docs/stats.json ]; then
+            cp workspace/docs/stats.json docs-repo/stats.json
+            cd docs-repo
+            git config user.name "legalize-kr-bot"
+            git config user.email "bot@legalize.kr"
+            git add stats.json
+            git diff --cached --quiet && echo "No docs changes" && exit 0
+            git commit -m "chore: update stats.json"
+            git push
+          fi
