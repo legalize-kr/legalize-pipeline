@@ -17,14 +17,14 @@ from pathlib import Path
 
 import yaml
 
-from config import CHILD_SUFFIXES, KR_DIR, PROJECT_ROOT
+from config import CHILD_SUFFIXES, KR_DIR, WORKSPACE_ROOT
 from converter import normalize_law_name
 
 logger = logging.getLogger(__name__)
 
 REQUIRED_FIELDS = ["제목", "법령MST", "법령구분", "법령구분코드", "소관부처", "공포일자", "상태"]
 
-METADATA_FILE = PROJECT_ROOT / "metadata.json"
+METADATA_FILE = WORKSPACE_ROOT / "metadata.json"
 
 
 def validate_frontmatter(file_path: Path) -> list[str]:
@@ -98,14 +98,14 @@ def validate_metadata_json() -> list[str]:
 
     # Check each entry has a corresponding file
     for mst, info in metadata.items():
-        file_path = PROJECT_ROOT / info.get("path", "")
+        file_path = WORKSPACE_ROOT / info.get("path", "")
         if not file_path.exists():
             errors.append(f"metadata.json references missing file: {info.get('path')}")
 
     # Check for files not in metadata (by MST in frontmatter)
     known_paths = {info.get("path") for info in metadata.values()}
     for md_file in KR_DIR.rglob("*.md"):
-        rel = str(md_file.relative_to(PROJECT_ROOT))
+        rel = str(md_file.relative_to(WORKSPACE_ROOT))
         if rel not in known_paths:
             errors.append(f"File not in metadata.json: {rel}")
 
@@ -122,7 +122,7 @@ def main():
         errors = validate_frontmatter(md_file)
         files_checked += 1
         if errors:
-            rel_path = md_file.relative_to(PROJECT_ROOT)
+            rel_path = md_file.relative_to(WORKSPACE_ROOT)
             for err in errors:
                 logger.error(f"{rel_path}: {err}")
             total_errors += len(errors)

@@ -16,7 +16,7 @@ from pathlib import Path
 
 import cache
 from api_client import get_law_detail
-from config import BOT_AUTHOR, PROJECT_ROOT
+from config import BOT_AUTHOR, WORKSPACE_ROOT
 from converter import (
     format_date,
     get_law_path,
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 INFRA_AUTHOR = BOT_AUTHOR
 
-# Files/dirs to include in the infra commit (relative to PROJECT_ROOT)
+# Files/dirs to include in the infra commit (relative to WORKSPACE_ROOT)
 INFRA_PATHS = [
     ".github",
     ".gitignore",
@@ -47,7 +47,7 @@ def _run_git(*args: str, env: dict | None = None) -> str:
     merged_env = {**os.environ, **(env or {})}
     result = subprocess.run(
         ["git", *args],
-        cwd=PROJECT_ROOT,
+        cwd=WORKSPACE_ROOT,
         capture_output=True,
         text=True,
         env=merged_env,
@@ -68,7 +68,7 @@ def create_orphan_branch(branch_name: str = "rebuild") -> None:
 def commit_infra(dry_run: bool = False, infra_date: str | None = None) -> str | None:
     """Commit all infrastructure files as a single commit."""
     for path in INFRA_PATHS:
-        abs_path = PROJECT_ROOT / path
+        abs_path = WORKSPACE_ROOT / path
         if abs_path.exists():
             _run_git("add", path)
 
@@ -169,7 +169,7 @@ def rebuild_law_commits(entries: list[tuple[str, dict]], dry_run: bool = False) 
             continue
 
         try:
-            abs_path = PROJECT_ROOT / file_path
+            abs_path = WORKSPACE_ROOT / file_path
             abs_path.parent.mkdir(parents=True, exist_ok=True)
 
             content = law_to_markdown(detail)

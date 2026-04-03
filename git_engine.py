@@ -4,7 +4,7 @@ import logging
 import os
 import subprocess
 
-from config import BOT_AUTHOR, PROJECT_ROOT
+from config import BOT_AUTHOR, WORKSPACE_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ def _run_git(*args: str, env: dict | None = None) -> str:
     merged_env = {**os.environ, **(env or {})}
     result = subprocess.run(
         ["git", *args],
-        cwd=PROJECT_ROOT,
+        cwd=WORKSPACE_ROOT,
         capture_output=True,
         text=True,
         env=merged_env,
@@ -64,7 +64,7 @@ def commit_law(
     Returns:
         Commit hash if committed, None if skipped.
     """
-    abs_path = PROJECT_ROOT / file_path
+    abs_path = WORKSPACE_ROOT / file_path
     if not abs_path.exists():
         logger.error(f"File not found: {abs_path}")
         return None

@@ -11,11 +11,11 @@ import os
 import tempfile
 from pathlib import Path
 
-from config import PROJECT_ROOT
+from config import WORKSPACE_ROOT
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = PROJECT_ROOT / ".cache"
+CACHE_DIR = WORKSPACE_ROOT / ".cache"
 
 # OS filename limit is typically 255 bytes; leave margin for extension
 _MAX_FILENAME_BYTES = 200

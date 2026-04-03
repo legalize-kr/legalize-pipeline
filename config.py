@@ -8,9 +8,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Paths
-PROJECT_ROOT = Path(__file__).parent.parent
-KR_DIR = PROJECT_ROOT / "kr"
-REFERENCES_DIR = PROJECT_ROOT / "doc" / "references"
+PROJECT_ROOT = Path(__file__).parent
+WORKSPACE_ROOT = Path(os.environ.get("WORKSPACE_ROOT", str(PROJECT_ROOT.parent)))
+KR_DIR = WORKSPACE_ROOT / "kr"
 
 # API
 LAW_API_BASE = "http://www.law.go.kr/DRF"

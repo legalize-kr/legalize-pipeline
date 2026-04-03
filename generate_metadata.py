@@ -7,12 +7,12 @@ from pathlib import Path
 
 import yaml
 
-from config import KR_DIR, PROJECT_ROOT
+from config import KR_DIR, WORKSPACE_ROOT
 
 logger = logging.getLogger(__name__)
 
-METADATA_FILE = PROJECT_ROOT / "metadata.json"
-STATS_FILE = PROJECT_ROOT / "docs" / "stats.json"
+METADATA_FILE = WORKSPACE_ROOT / "metadata.json"
+STATS_FILE = WORKSPACE_ROOT / "docs" / "stats.json"
 
 
 def parse_frontmatter(file_path: Path) -> dict | None:
@@ -56,7 +56,7 @@ def generate() -> dict:
             logger.warning(f"No 법령MST in {md_file}")
             continue
 
-        rel_path = str(md_file.relative_to(PROJECT_ROOT))
+        rel_path = str(md_file.relative_to(WORKSPACE_ROOT))
 
         metadata[mst] = {
             "path": rel_path,
@@ -77,7 +77,7 @@ def count_law_commits() -> int:
     try:
         result = subprocess.run(
             ["git", "log", "--oneline", "--", "kr/"],
-            capture_output=True, text=True, cwd=PROJECT_ROOT,
+            capture_output=True, text=True, cwd=WORKSPACE_ROOT,
         )
         if result.returncode == 0:
             return len(result.stdout.strip().splitlines())

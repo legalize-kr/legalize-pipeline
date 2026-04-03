@@ -4,11 +4,11 @@ import json
 import logging
 from pathlib import Path
 
-from config import PROJECT_ROOT
+from config import WORKSPACE_ROOT
 
 logger = logging.getLogger(__name__)
 
-CHECKPOINT_FILE = PROJECT_ROOT / ".checkpoint.json"
+CHECKPOINT_FILE = WORKSPACE_ROOT / ".checkpoint.json"
 
 
 def load() -> dict:
