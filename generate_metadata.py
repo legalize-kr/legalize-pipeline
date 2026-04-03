@@ -12,7 +12,7 @@ from config import KR_DIR, WORKSPACE_ROOT
 logger = logging.getLogger(__name__)
 
 METADATA_FILE = WORKSPACE_ROOT / "metadata.json"
-STATS_FILE = WORKSPACE_ROOT / "docs" / "stats.json"
+STATS_FILE = WORKSPACE_ROOT / "stats.json"
 
 
 def parse_frontmatter(file_path: Path) -> dict | None:
@@ -99,7 +99,7 @@ def build_stats(metadata: dict) -> dict:
 
 
 def save(metadata: dict | None = None) -> int:
-    """Generate and save metadata.json and docs/stats.json. Returns count of entries."""
+    """Generate and save metadata.json and stats.json. Returns count of entries."""
     if metadata is None:
         metadata = generate()
 
@@ -109,14 +109,13 @@ def save(metadata: dict | None = None) -> int:
     )
 
     stats = build_stats(metadata)
-    STATS_FILE.parent.mkdir(parents=True, exist_ok=True)
     STATS_FILE.write_text(
         json.dumps(stats, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
     logger.info(f"Generated metadata.json with {len(metadata)} entries")
-    logger.info(f"Generated docs/stats.json: {stats}")
+    logger.info(f"Generated stats.json: {stats}")
     return len(metadata)
 
 

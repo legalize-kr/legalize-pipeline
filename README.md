@@ -1,6 +1,8 @@
-# Scripts
+# legalize-pipeline
 
 법령 수집·변환·검증 파이프라인입니다.
+
+> 이 저장소는 [`legalize-kr/legalize-kr`](https://github.com/legalize-kr/legalize-kr)(법령 데이터)와 [`legalize-kr/legalize-web`](https://github.com/legalize-kr/legalize-web)(웹사이트)과 함께 사용됩니다.
 
 ## 사전 준비
 
@@ -37,6 +39,29 @@ python import_laws.py --csv /some/path/법령검색목록.csv
 법령 상세 API (`lawService.do`) 응답을 `.cache/detail/{MST}.xml`에 Raw XML로 캐시합니다.
 한번 캐시된 MST는 이후 API 호출 없이 즉시 로드됩니다.
 
+### 캐시 다운로드
+
+사전 수집된 캐시 데이터는 [`legalize-kr/legalize-kr` 릴리즈 페이지](https://github.com/legalize-kr/legalize-kr/releases)에서 다운로드할 수 있습니다.
+
+```bash
+# 법령 데이터 저장소
+git clone https://github.com/legalize-kr/legalize-kr.git
+
+# 파이프라인 저장소 (데이터 저장소 안에 체크아웃)
+git clone https://github.com/legalize-kr/legalize-pipeline.git legalize-kr/pipeline
+
+cd legalize-kr
+
+# 캐시 압축 해제 (법령 데이터 저장소 루트에서)
+unzip legalize-kr-cache.zip
+# .cache/detail/*.xml, .cache/history/*.json 이 생성됩니다
+```
+
+> **참고**: 파이프라인은 상위 디렉토리를 `WORKSPACE_ROOT`(법령 데이터 저장소)로 사용합니다.
+> 다른 경로에 체크아웃한 경우 `WORKSPACE_ROOT` 환경변수를 설정하세요.
+
+### 캐시 수집
+
 ```bash
 # 모든 현행 법령의 개정 이력 + 상세 XML 캐시 (기본 5 workers 병렬)
 python fetch_cache.py
@@ -54,7 +79,7 @@ python fetch_cache.py --limit 10
 > **참고**: 병렬 처리 시 API rate limit은 전체 workers가 공유합니다 (thread-safe throttle).
 > 캐시 파일은 atomic write (tempfile → rename)로 저장되어 병렬 실행에 안전합니다.
 
-캐시 수집 완료 후, 캐시만으로 Git Commit 구성:
+### 캐시에서 import
 
 ```bash
 # 캐시된 XML에서 Markdown 변환 + Git Commit (API 호출 없음)
@@ -67,6 +92,27 @@ python import_laws.py --from-cache --dry-run
 > **참고**: `--from-cache`는 `.cache/detail/`의 파일만 사용합니다.
 > 일반 import (`import_laws.py`, `update.py`)는 search/history API를 호출하되,
 > detail API는 캐시가 있으면 자동으로 캐시에서 읽습니다.
+
+### 캐시에서 Git 히스토리 재구성
+
+```bash
+cd legalize-kr/pipeline
+python rebuild.py --infra-date "2026-03-30T12:00:00+09:00" --dry-run  # 미리보기
+python rebuild.py --infra-date "2026-03-30T12:00:00+09:00"            # 실제 실행 (~3시간)
+```
+
+rebuild 브랜치가 생성되며, 확인 후:
+```bash
+git branch -M rebuild main
+```
+
+### 캐시 구조
+
+```
+.cache/
+  detail/{MST}.xml          # 법령 상세 API 원본 XML
+  history/{법령명}.json      # 법령별 개정 이력
+```
 
 ## 증분 업데이트 (일일 실행)
 
@@ -86,7 +132,7 @@ GitHub Actions에서 매일 13:00 KST에 자동 실행됩니다.
 python generate_metadata.py
 ```
 
-`kr/` 아래 모든 `.md` 파일을 스캔하여 `metadata.json`을 갱신합니다.
+`kr/` 아래 모든 `.md` 파일을 스캔하여 `metadata.json`과 `stats.json`을 갱신합니다.
 
 ## 유효성 검증
 

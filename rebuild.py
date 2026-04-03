@@ -37,8 +37,6 @@ INFRA_PATHS = [
     "KNOWN_ISSUES.md",
     "LICENSE",
     "README.md",
-    "docs",
-    "scripts",
 ]
 
 
@@ -215,7 +213,7 @@ def commit_metadata(dry_run: bool = False) -> str | None:
     from generate_metadata import save as save_metadata
     save_metadata()
 
-    _run_git("add", "metadata.json", "docs/stats.json")
+    _run_git("add", "metadata.json", "stats.json")
     _run_git(
         "commit",
         "-m", "chore: generate metadata.json",

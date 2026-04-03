@@ -26,13 +26,13 @@ jobs:
           fetch-depth: 0
           path: workspace
 
-      - name: Clean stale scripts dir
-        run: rm -rf workspace/scripts
+      - name: Clean previous pipeline checkout
+        run: rm -rf workspace/pipeline
 
-      - name: Checkout scripts
+      - name: Checkout pipeline
         uses: actions/checkout@v4
         with:
-          path: workspace/scripts
+          path: workspace/pipeline
 
       - name: Checkout docs repo
         uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
         run: |
           python3 -m venv .venv
           . .venv/bin/activate
-          pip install -r workspace/scripts/requirements.txt
+          pip install -r workspace/pipeline/requirements.txt
 
       - name: Configure git
         working-directory: workspace
@@ -54,7 +54,7 @@ jobs:
           git config user.email "bot@legalize.kr"
 
       - name: Run update
-        working-directory: workspace/scripts
+        working-directory: workspace/pipeline
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
         run: |
@@ -62,7 +62,7 @@ jobs:
           python update.py
 
       - name: Validate
-        working-directory: workspace/scripts
+        working-directory: workspace/pipeline
         run: |
           . ../../.venv/bin/activate
           python validate.py
@@ -78,8 +78,8 @@ jobs:
 
       - name: Update docs stats
         run: |
-          if [ -f workspace/docs/stats.json ]; then
-            cp workspace/docs/stats.json docs-repo/stats.json
+          if [ -f workspace/stats.json ]; then
+            cp workspace/stats.json docs-repo/stats.json
             cd docs-repo
             git config user.name "legalize-kr-bot"
             git config user.email "bot@legalize.kr"
