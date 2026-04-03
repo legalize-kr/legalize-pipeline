@@ -15,6 +15,7 @@
 | `legalize-kr/legalize-pipeline` | 수집·변환·검증 파이프라인 (이 저장소) |
 | `legalize-kr/legalize-web` | 웹사이트 (`legalize.kr`, GitHub Pages) |
 | `legalize-kr/compiler` | rebuild용 네이티브 컴파일러 (선택) |
+| `legalize-kr/precedent-kr` | 판례 데이터 (예정) |
 
 ## Directory Structure
 
@@ -32,6 +33,12 @@ rebuild.py             # Git 히스토리 재구성 (orphan branch)
 generate_metadata.py   # metadata.json, stats.json 생성
 validate.py            # 유효성 검증 (frontmatter, Unicode, 파일 일치)
 .github/workflows/     # CI/CD (daily-update.yml, full-import.yml)
+precedents/            # 판례 파이프라인 (python -m precedents.fetch_cache)
+  __init__.py          # 패키지 마커
+  config.py            # 캐시 경로, API 설정 (LAW_OC 공유)
+  cache.py             # .cache/precedent/{판례일련번호}.xml 캐시 (atomic write)
+  api_client.py        # law.go.kr OpenAPI 래퍼 (target=prec)
+  fetch_cache.py       # 전체 판례 목록 수집 + 상세 XML 병렬 캐시
 ```
 
 ### 런타임 워크스페이스
@@ -44,9 +51,11 @@ CI에서는 `workspace/` 아래에 데이터 저장소를 체크아웃하고, `w
   kr/{법령명}/                 # 법령 Markdown 파일
   metadata.json                # 법령 인덱스 (자동 생성)
   stats.json                   # 통계 (자동 생성 → legalize-web으로 복사)
-  .cache/detail/{MST}.xml      # API 상세 응답 캐시
-  .cache/history/{법령명}.json  # 개정 이력 캐시
-  .checkpoint.json             # 처리 상태
+  .cache/detail/{MST}.xml              # 법령 API 상세 응답 캐시
+  .cache/history/{법령명}.json          # 법령 개정 이력 캐시
+  .cache/precedent/{판례일련번호}.xml   # 판례 API 상세 응답 캐시
+  .cache/precedent/all_ids.txt         # 수집된 판례 ID 목록 (--skip-list 재사용)
+  .checkpoint.json                     # 법령 처리 상태
 ```
 
 ## Pipeline Architecture
@@ -175,6 +184,33 @@ feat|fix|chore|docs|ci: 설명
 - 공포일자 `YYYYMMDD` → `YYYY-MM-DD` 변환 (converter.py)
 - 1970-01-01 이전 날짜는 Git epoch 제한으로 1970-01-01로 클램프
 - 커밋 시 `+09:00` (KST) 타임존 사용
+
+## 판례 파이프라인
+
+`precedents/` 패키지는 법령과 동일한 국가법령정보센터 API에서 판례(판결문)를 수집하여 캐시합니다.
+
+```bash
+# 전체 판례 목록 수집 및 상세 XML 캐시 (최초 실행)
+python -m precedents.fetch_cache
+
+# 이전에 수집한 all_ids.txt 재사용, 목록 재수집 생략
+python -m precedents.fetch_cache --skip-list
+
+# 테스트용 (N건만)
+python -m precedents.fetch_cache --limit 100
+
+# 병렬 workers 수 조정 (기본값: 5)
+python -m precedents.fetch_cache --workers 3
+```
+
+> **참고**: 이미 캐시된 항목은 자동으로 건너뜁니다 (모든 실행에서 자동 재개).
+> `--skip-list`는 목록 재수집(API 페이지네이션)을 생략할 뿐이며, 상세 XML 캐시 여부와 무관합니다.
+
+**API 엔드포인트**
+- 목록: `lawSearch.do?target=prec` (판례 검색, 페이지네이션)
+- 본문: `lawService.do?target=prec&ID={판례일련번호}` (판례 전문 XML)
+
+**환경변수**: `LAW_OC` (법령과 동일한 키)
 
 ## API
 

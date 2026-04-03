@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import cache
 from api_client import get_law_detail, get_law_history, search_laws
 from config import CONCURRENT_WORKERS
+from shared.counter import Counter
 
 logger = logging.getLogger(__name__)
 
@@ -43,25 +44,7 @@ def fetch_all_msts() -> list[dict]:
     return all_laws
 
 
-class _Counter:
-    """Thread-safe counters for progress tracking."""
-
-    def __init__(self):
-        self._lock = threading.Lock()
-        self.cached = 0
-        self.fetched = 0
-        self.errors = 0
-
-    def inc(self, field: str) -> None:
-        with self._lock:
-            setattr(self, field, getattr(self, field) + 1)
-
-    def snapshot(self) -> tuple[int, int, int]:
-        with self._lock:
-            return self.cached, self.fetched, self.errors
-
-
-def _fetch_detail_task(mst: str, name: str, counter: _Counter) -> None:
+def _fetch_detail_task(mst: str, name: str, counter: Counter) -> None:
     """Fetch a single detail, skipping if cached."""
     if cache.get_detail(mst) is not None:
         counter.inc("cached")
@@ -74,7 +57,7 @@ def _fetch_detail_task(mst: str, name: str, counter: _Counter) -> None:
         counter.inc("errors")
 
 
-def _fetch_history_task(name: str, counter: _Counter, all_msts: list, msts_lock: threading.Lock) -> None:
+def _fetch_history_task(name: str, counter: Counter, all_msts: list, msts_lock: threading.Lock) -> None:
     """Fetch history for a single law name."""
     try:
         already_cached = cache.get_history(name) is not None
@@ -132,7 +115,7 @@ def main():
 
         logger.info(f"Fetching detail for {len(unique)} unique laws (skip-history, workers={workers})...")
 
-        counter = _Counter()
+        counter = Counter()
         done = 0
         total = len(unique)
 
@@ -167,7 +150,7 @@ def main():
     # Step 1: Fetch history concurrently
     logger.info(f"Fetching history for {len(unique_names)} unique law names (workers={workers})...")
 
-    history_counter = _Counter()
+    history_counter = Counter()
     all_msts: list[str] = []
     msts_lock = threading.Lock()
     done = 0
@@ -192,7 +175,7 @@ def main():
     mst_list = sorted(set(all_msts))
     logger.info(f"Fetching detail for {len(mst_list)} historical MSTs (workers={workers})...")
 
-    detail_counter = _Counter()
+    detail_counter = Counter()
     done = 0
     total = len(mst_list)
 

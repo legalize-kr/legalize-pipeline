@@ -1,26 +1,19 @@
 """Central configuration for legalize-kr pipeline."""
 
-import os
-from pathlib import Path
+from shared.config import (  # noqa: F401 — re-exported
+    BACKOFF_BASE_SECONDS,
+    BOT_AUTHOR,
+    CONCURRENT_WORKERS,
+    LAW_API_BASE,
+    LAW_API_KEY,
+    MAX_RETRIES,
+    PROJECT_ROOT,
+    REQUEST_DELAY_SECONDS,
+    WORKSPACE_ROOT,
+)
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# Paths
-PROJECT_ROOT = Path(__file__).parent
-WORKSPACE_ROOT = Path(os.environ.get("WORKSPACE_ROOT", str(PROJECT_ROOT.parent)))
+# Laws-specific paths
 KR_DIR = WORKSPACE_ROOT / "kr"
-
-# API
-LAW_API_BASE = "http://www.law.go.kr/DRF"
-LAW_API_KEY = os.environ.get("LAW_OC", os.environ.get("LAW_API_KEY", ""))
-
-# Rate limiting
-REQUEST_DELAY_SECONDS = 0.2
-MAX_RETRIES = 3
-BACKOFF_BASE_SECONDS = 2.0
-CONCURRENT_WORKERS = 5
 
 # Suffixes that indicate a child law (order matters: longest first)
 CHILD_SUFFIXES = [
@@ -41,6 +34,3 @@ TYPE_TO_FILENAME = {
     "감사원규칙": "감사원규칙",
     "선거관리위원회규칙": "선거관리위원회규칙",
 }
-
-# Bot identity for automated commits
-BOT_AUTHOR = "legalize-kr-bot <bot@legalize.kr>"

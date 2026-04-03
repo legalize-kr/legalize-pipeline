@@ -1,0 +1,5 @@
+{
+  "pythonVersion": "3.12",
+  "include": ["."],
+  "exclude": [".venv", "__pycache__"]
+}

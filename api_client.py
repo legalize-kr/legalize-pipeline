@@ -1,8 +1,6 @@
 """Thin wrapper around law.go.kr OpenAPI."""
 
 import logging
-import threading
-import time
 from xml.etree import ElementTree
 
 import requests
@@ -15,46 +13,23 @@ from config import (
     MAX_RETRIES,
     REQUEST_DELAY_SECONDS,
 )
+from shared.http import make_request
+from shared.throttle import Throttle
 
 logger = logging.getLogger(__name__)
 
-_last_request_time = 0.0
-_throttle_lock = threading.Lock()
-
-
-def _throttle():
-    """Rate limit requests (thread-safe)."""
-    global _last_request_time
-    with _throttle_lock:
-        elapsed = time.time() - _last_request_time
-        if elapsed < REQUEST_DELAY_SECONDS:
-            time.sleep(REQUEST_DELAY_SECONDS - elapsed)
-        _last_request_time = time.time()
+_throttle = Throttle(REQUEST_DELAY_SECONDS)
 
 
 def _request(url: str, params: dict) -> requests.Response:
     """Make a throttled request with retry and exponential backoff."""
-    params["OC"] = LAW_API_KEY
-
-    for attempt in range(MAX_RETRIES + 1):
-        _throttle()
-        try:
-            resp = requests.get(url, params=params, timeout=30)
-            if resp.status_code == 429:
-                wait = BACKOFF_BASE_SECONDS * (2 ** attempt)
-                logger.warning(f"Rate limited (429). Waiting {wait}s before retry.")
-                time.sleep(wait)
-                continue
-            resp.raise_for_status()
-            return resp
-        except requests.RequestException as e:
-            if attempt == MAX_RETRIES:
-                raise
-            wait = BACKOFF_BASE_SECONDS * (2 ** attempt)
-            logger.warning(f"Request failed: {e}. Retry {attempt + 1}/{MAX_RETRIES} in {wait}s")
-            time.sleep(wait)
-
-    raise RuntimeError("Unreachable")
+    return make_request(
+        url, params,
+        throttle=_throttle,
+        api_key=LAW_API_KEY,
+        max_retries=MAX_RETRIES,
+        backoff_base=BACKOFF_BASE_SECONDS,
+    )
 
 
 def search_laws(

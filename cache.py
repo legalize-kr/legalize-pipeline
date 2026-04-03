@@ -7,11 +7,10 @@ amendment history (lsHistory) in .cache/history/{law_name}.json.
 import hashlib
 import json
 import logging
-import os
-import tempfile
 from pathlib import Path
 
 from config import WORKSPACE_ROOT
+from shared.atomic_io import atomic_write_bytes, atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -45,32 +44,10 @@ def get_detail(mst_id: str) -> bytes | None:
     return None
 
 
-def _atomic_write_bytes(path: Path, content: bytes) -> None:
-    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-    try:
-        os.write(fd, content)
-        os.close(fd)
-        os.replace(tmp, path)
-    except BaseException:
-        try:
-            os.close(fd)
-        except OSError:
-            pass
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
-
-
-def _atomic_write_text(path: Path, text: str) -> None:
-    _atomic_write_bytes(path, text.encode("utf-8"))
-
-
 def put_detail(mst_id: str, content: bytes) -> None:
     path = _detail_path(str(mst_id))
     path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_bytes(path, content)
+    atomic_write_bytes(path, content)
 
 
 def list_cached_msts() -> list[str]:
@@ -97,7 +74,7 @@ def put_history(law_name: str, entries: list[dict]) -> None:
     """Write amendment history for a law to cache."""
     path = _history_path(law_name)
     path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_text(path, json.dumps(entries, ensure_ascii=False, indent=2))
+    atomic_write_text(path, json.dumps(entries, ensure_ascii=False, indent=2))
 
 
 def list_cached_history_names() -> list[str]:
