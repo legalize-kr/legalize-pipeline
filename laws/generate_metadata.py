@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from config import KR_DIR, WORKSPACE_ROOT
+from .config import KR_DIR, WORKSPACE_ROOT
 
 logger = logging.getLogger(__name__)
 

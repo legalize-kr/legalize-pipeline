@@ -20,25 +20,34 @@
 ## Directory Structure
 
 ```
-config.py              # 경로, API, rate limit 설정
-api_client.py          # law.go.kr OpenAPI 래퍼 (search, detail, history)
-converter.py           # XML → Markdown 변환 (frontmatter, 조문 파싱)
-cache.py               # 파일 기반 캐시 (detail XML, history JSON)
-checkpoint.py          # 처리 상태 관리 (processed_msts, last_update)
-git_engine.py          # Git 커밋 (공포일자 기반 historical date)
-import_laws.py         # 전체 import (API/캐시/CSV 모드)
-update.py              # 증분 업데이트 (최근 N일)
-fetch_cache.py         # 캐시 수집 (history + detail, 병렬)
-rebuild.py             # Git 히스토리 재구성 (orphan branch)
-generate_metadata.py   # metadata.json, stats.json 생성
-validate.py            # 유효성 검증 (frontmatter, Unicode, 파일 일치)
-.github/workflows/     # CI/CD (daily-update.yml, full-import.yml)
+core/                  # 파이프라인 공통 인프라
+  __init__.py          # 패키지 마커
+  config.py            # 경로, API 키, rate limit, BOT_AUTHOR
+  http.py              # HTTP 요청 (retry, exponential backoff)
+  atomic_io.py         # 원자적 파일 쓰기 (tempfile + rename)
+  throttle.py          # 스레드 안전 rate limiter
+  counter.py           # 스레드 안전 진행 카운터
+laws/                  # 법령 파이프라인 (python -m laws.update)
+  __init__.py          # 패키지 마커
+  config.py            # 법령 전용 설정 (KR_DIR, CHILD_SUFFIXES 등)
+  api_client.py        # law.go.kr OpenAPI 래퍼 (search, detail, history)
+  cache.py             # 파일 기반 캐시 (detail XML, history JSON)
+  checkpoint.py        # 처리 상태 관리 (processed_msts, last_update)
+  converter.py         # XML → Markdown 변환 (frontmatter, 조문 파싱)
+  git_engine.py        # Git 커밋 (공포일자 기반 historical date)
+  fetch_cache.py       # 캐시 수집 (history + detail, 병렬)
+  import_laws.py       # 전체 import (API/캐시/CSV 모드)
+  rebuild.py           # Git 히스토리 재구성 (orphan branch)
+  update.py            # 증분 업데이트 (최근 N일)
+  generate_metadata.py # metadata.json, stats.json 생성
+  validate.py          # 유효성 검증 (frontmatter, Unicode, 파일 일치)
 precedents/            # 판례 파이프라인 (python -m precedents.fetch_cache)
   __init__.py          # 패키지 마커
   config.py            # 캐시 경로, API 설정 (LAW_OC 공유)
   cache.py             # .cache/precedent/{판례일련번호}.xml 캐시 (atomic write)
   api_client.py        # law.go.kr OpenAPI 래퍼 (target=prec)
   fetch_cache.py       # 전체 판례 목록 수집 + 상세 XML 병렬 캐시
+.github/workflows/     # CI/CD (daily-update.yml, full-import.yml)
 ```
 
 ### 런타임 워크스페이스
@@ -63,29 +72,29 @@ CI에서는 `workspace/` 아래에 데이터 저장소를 체크아웃하고, `w
 ```
 law.go.kr OpenAPI
     ↓
-api_client.py ──→ cache.py (atomic write, thread-safe)
+laws/api_client.py ──→ laws/cache.py (atomic write via core/atomic_io)
     ↓
-converter.py (XML → Markdown + YAML frontmatter)
+laws/converter.py (XML → Markdown + YAML frontmatter)
     ↓
-git_engine.py (공포일자 기반 커밋, MST 기반 중복 방지)
+laws/git_engine.py (공포일자 기반 커밋, MST 기반 중복 방지)
     ↓
-checkpoint.py (processed_msts 추적)
+laws/checkpoint.py (processed_msts 추적)
     ↓
-generate_metadata.py (metadata.json + stats.json)
+laws/generate_metadata.py (metadata.json + stats.json)
 ```
 
 ### 실행 모드
 
 | 모드 | 엔트리포인트 | 용도 |
 |---|---|---|
-| 전체 import | `import_laws.py` | 모든 법령 + 개정 이력 수집 |
-| 증분 업데이트 | `update.py --days 7` | 최근 변경 법령만 |
-| 캐시 수집 | `fetch_cache.py` | API → 로컬 캐시 (병렬) |
-| 캐시 import | `import_laws.py --from-cache` | 캐시 → Markdown (오프라인) |
-| CSV import | `import_laws.py --csv path` | CSV 폴백 (본문 없음) |
-| 히스토리 재구성 | `rebuild.py` | orphan branch, 시간순 커밋 |
-| 메타데이터 생성 | `generate_metadata.py` | `kr/` 스캔 → JSON |
-| 유효성 검증 | `validate.py` | frontmatter, Unicode, 정합성 |
+| 전체 import | `python -m laws.import_laws` | 모든 법령 + 개정 이력 수집 |
+| 증분 업데이트 | `python -m laws.update --days 7` | 최근 변경 법령만 |
+| 캐시 수집 | `python -m laws.fetch_cache` | API → 로컬 캐시 (병렬) |
+| 캐시 import | `python -m laws.import_laws --from-cache` | 캐시 → Markdown (오프라인) |
+| CSV import | `python -m laws.import_laws --csv path` | CSV 폴백 (본문 없음) |
+| 히스토리 재구성 | `python -m laws.rebuild` | orphan branch, 시간순 커밋 |
+| 메타데이터 생성 | `python -m laws.generate_metadata` | `kr/` 스캔 → JSON |
+| 유효성 검증 | `python -m laws.validate` | frontmatter, Unicode, 정합성 |
 
 ## Configuration
 
@@ -96,7 +105,7 @@ generate_metadata.py (metadata.json + stats.json)
 | `LAW_OC` | 국가법령정보센터 OpenAPI 키 | (필수) |
 | `WORKSPACE_ROOT` | 법령 데이터 저장소 경로 | 상위 디렉토리 |
 
-### config.py 주요 설정
+### core/config.py 주요 설정
 
 - `REQUEST_DELAY_SECONDS = 0.2` — API 호출 간격 (thread-safe throttle)
 - `MAX_RETRIES = 3` — 재시도 횟수 (exponential backoff)
@@ -110,14 +119,14 @@ generate_metadata.py (metadata.json + stats.json)
 1. `legalize-kr/legalize-kr` → `workspace/`
 2. `legalize-kr/legalize-pipeline` → `workspace/pipeline/`
 3. `legalize-kr/legalize-web` → `docs-repo/`
-4. `update.py` 실행 (7일 lookback)
-5. `validate.py` 실행
+4. `python -m laws.update` 실행 (7일 lookback)
+5. `python -m laws.validate` 실행
 6. 데이터 저장소 push
 7. `stats.json` → `docs-repo/` 복사 및 push
 
 ### full-import.yml (수동 실행)
 
-동일 체크아웃 → 캐시 확인/수집 → compiler 또는 `rebuild.py` → validate → force push
+동일 체크아웃 → 캐시 확인/수집 → compiler 또는 `python -m laws.rebuild` → validate → force push
 
 ## Commit Convention
 
@@ -144,7 +153,7 @@ feat|fix|chore|docs|ci: 설명
 
 ## Key Implementation Details
 
-### 파일 경로 규칙 (converter.py)
+### 파일 경로 규칙 (laws/converter.py)
 
 - `{법률명} 시행령` → `kr/{법률명}/시행령.md`
 - `{법률명} 시행규칙` → `kr/{법률명}/시행규칙.md`
@@ -152,7 +161,7 @@ feat|fix|chore|docs|ci: 설명
 - 독립 대통령령 → `kr/{대통령령명}/대통령령.md`
 - 경로 충돌 시 `시행규칙(부령).md` 형태로 법령구분 한정자 추가
 
-### Markdown 변환 규칙 (converter.py)
+### Markdown 변환 규칙 (laws/converter.py)
 
 | 법령 구조 | Markdown | 비고 |
 |---|---|---|
@@ -169,19 +178,19 @@ feat|fix|chore|docs|ci: 설명
 
 ### 중복 방지
 
-- 커밋 메시지의 `법령MST:` 로 `git log --grep` 검사 (git_engine.py)
-- `.checkpoint.json`의 `processed_msts` set (checkpoint.py)
-- `update.py`는 checkpoint만 사용 (skip_dedup=True)
+- 커밋 메시지의 `법령MST:` 로 `git log --grep` 검사 (laws/git_engine.py)
+- `.checkpoint.json`의 `processed_msts` set (laws/checkpoint.py)
+- `laws/update.py`는 checkpoint만 사용 (skip_dedup=True)
 
 ### 캐시 안전성
 
-- Atomic write: `tempfile.mkstemp()` → `os.replace()` (cache.py)
-- Thread-safe throttle: `threading.Lock` (api_client.py)
+- Atomic write: `tempfile.mkstemp()` → `os.replace()` (core/atomic_io.py)
+- Thread-safe throttle: `threading.Lock` (core/throttle.py)
 - 긴 파일명: 200바이트 초과 시 SHA256 해시 접미사
 
 ### 날짜 처리
 
-- 공포일자 `YYYYMMDD` → `YYYY-MM-DD` 변환 (converter.py)
+- 공포일자 `YYYYMMDD` → `YYYY-MM-DD` 변환 (laws/converter.py)
 - 1970-01-01 이전 날짜는 Git epoch 제한으로 1970-01-01로 클램프
 - 커밋 시 `+09:00` (KST) 타임존 사용
 

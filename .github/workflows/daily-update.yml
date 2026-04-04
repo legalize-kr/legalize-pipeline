@@ -59,13 +59,13 @@ jobs:
           LAW_OC: ${{ secrets.LAW_OC }}
         run: |
           . ../../.venv/bin/activate
-          python update.py
+          python -m laws.update
 
       - name: Validate
         working-directory: workspace/pipeline
         run: |
           . ../../.venv/bin/activate
-          python validate.py
+          python -m laws.validate
 
       - name: Push law changes
         working-directory: workspace

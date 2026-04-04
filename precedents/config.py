@@ -1,6 +1,6 @@
 """Configuration for the precedents pipeline."""
 
-from shared.config import (  # noqa: F401 — re-exported
+from core.config import (  # noqa: F401 — re-exported
     BACKOFF_BASE_SECONDS,
     CONCURRENT_WORKERS,
     LAW_API_BASE,

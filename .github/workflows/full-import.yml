@@ -68,7 +68,7 @@ jobs:
           . ../../.venv/bin/activate
           if [ ! -d "../.cache/detail" ] || [ -z "$(ls -A ../.cache/detail/ 2>/dev/null)" ]; then
             echo "Cache missing or empty, building..."
-            python fetch_cache.py
+            python -m laws.fetch_cache
           else
             echo "Cache exists ($(ls ../.cache/detail/*.xml 2>/dev/null | wc -l) detail files)"
           fi
@@ -103,15 +103,15 @@ jobs:
             echo "Running compiler..."
             /tmp/legalize-compiler --cache ../.cache --output ..
           else
-            echo "Running rebuild.py..."
-            python rebuild.py --branch rebuild
+            echo "Running rebuild..."
+            python -m laws.rebuild --branch rebuild
           fi
 
       - name: Validate
         working-directory: workspace/pipeline
         run: |
           . ../../.venv/bin/activate
-          python validate.py
+          python -m laws.validate
 
       - name: Force push rebuilt history
         working-directory: workspace

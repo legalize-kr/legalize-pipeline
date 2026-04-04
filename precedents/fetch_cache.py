@@ -14,7 +14,7 @@ import argparse
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from shared.counter import Counter
+from core.counter import Counter
 
 from . import cache
 from .api_client import get_precedent_detail, search_precedents

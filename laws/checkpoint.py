@@ -4,7 +4,7 @@ import json
 import logging
 from pathlib import Path
 
-from config import WORKSPACE_ROOT
+from .config import WORKSPACE_ROOT
 
 logger = logging.getLogger(__name__)
 

@@ -6,11 +6,11 @@ and caches the detail XML for each one.
 
 Uses ThreadPoolExecutor for concurrent fetching with thread-safe throttling.
 
-Usage:
-    python fetch_cache.py                   # Fetch history + all historical details
-    python fetch_cache.py --skip-history    # Only cache current detail (old behavior)
-    python fetch_cache.py --limit 10        # Limit for testing
-    python fetch_cache.py --workers 3       # Override concurrent workers (default: 5)
+Usage (from legalize-pipeline root):
+    python -m laws.fetch_cache                   # Fetch history + all historical details
+    python -m laws.fetch_cache --skip-history    # Only cache current detail (old behavior)
+    python -m laws.fetch_cache --limit 10        # Limit for testing
+    python -m laws.fetch_cache --workers 3       # Override concurrent workers (default: 5)
 """
 
 import argparse
@@ -18,10 +18,10 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import cache
-from api_client import get_law_detail, get_law_history, search_laws
-from config import CONCURRENT_WORKERS
-from shared.counter import Counter
+from . import cache
+from .api_client import get_law_detail, get_law_history, search_laws
+from .config import CONCURRENT_WORKERS
+from core.counter import Counter
 
 logger = logging.getLogger(__name__)
 

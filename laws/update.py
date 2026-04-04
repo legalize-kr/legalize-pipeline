@@ -3,23 +3,23 @@
 Uses search API to find recently changed laws, then fetches and commits
 only the new versions directly (no full history traversal).
 
-Usage:
-    python update.py                    # Update recent laws (default 7 days)
-    python update.py --days 30          # Look back 30 days
-    python update.py --law-type 법률    # Only 법률
-    python update.py --dry-run          # Preview only
+Usage (from legalize-pipeline root):
+    python -m laws.update                    # Update recent laws (default 7 days)
+    python -m laws.update --days 30          # Look back 30 days
+    python -m laws.update --law-type 법률    # Only 법률
+    python -m laws.update --dry-run          # Preview only
 """
 
 import argparse
 import logging
 from datetime import datetime, timedelta
 
-from api_client import get_law_detail, search_laws
-from checkpoint import get_last_update, get_processed_msts, mark_processed, set_last_update
-from config import KR_DIR, LAW_API_KEY
-from converter import format_date, get_law_path, law_to_markdown, reset_path_registry
-from git_engine import commit_law
-from import_laws import build_commit_msg
+from .api_client import get_law_detail, search_laws
+from .checkpoint import get_last_update, get_processed_msts, mark_processed, set_last_update
+from .config import KR_DIR, LAW_API_KEY
+from .converter import format_date, get_law_path, law_to_markdown, reset_path_registry
+from .git_engine import commit_law
+from .import_laws import build_commit_msg
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ def main():
     committed = update(days=args.days, law_type_filter=args.law_type, dry_run=args.dry_run)
 
     if not args.dry_run:
-        from generate_metadata import save as save_metadata
+        from .generate_metadata import save as save_metadata
         save_metadata()
 
     logger.info(f"Update complete: {committed} laws committed")

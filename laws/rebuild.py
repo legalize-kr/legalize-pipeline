@@ -3,27 +3,25 @@
 Creates an orphan branch, commits infrastructure files first,
 then imports all laws from cache in chronological order.
 
-Usage:
-    python rebuild.py --dry-run     # Preview without git operations
-    python rebuild.py               # Full rebuild
+Usage (from legalize-pipeline root):
+    python -m laws.rebuild --dry-run     # Preview without git operations
+    python -m laws.rebuild               # Full rebuild
 """
 
 import argparse
 import logging
-import os
-import subprocess
-from pathlib import Path
 
-import cache
-from api_client import get_law_detail
-from config import BOT_AUTHOR, WORKSPACE_ROOT
-from converter import (
+from . import cache
+from .api_client import get_law_detail
+from .config import BOT_AUTHOR, WORKSPACE_ROOT
+from .converter import (
     format_date,
     get_law_path,
     law_to_markdown,
     reset_path_registry,
 )
-from import_laws import build_commit_msg
+from .git_engine import _run_git
+from .import_laws import build_commit_msg
 
 logger = logging.getLogger(__name__)
 
@@ -38,21 +36,6 @@ INFRA_PATHS = [
     "LICENSE",
     "README.md",
 ]
-
-
-
-def _run_git(*args: str, env: dict | None = None) -> str:
-    merged_env = {**os.environ, **(env or {})}
-    result = subprocess.run(
-        ["git", *args],
-        cwd=WORKSPACE_ROOT,
-        capture_output=True,
-        text=True,
-        env=merged_env,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
-    return result.stdout.strip()
 
 
 def create_orphan_branch(branch_name: str = "rebuild") -> None:
@@ -210,7 +193,7 @@ def commit_metadata(dry_run: bool = False) -> str | None:
         logger.info("[DRY-RUN] metadata commit")
         return None
 
-    from generate_metadata import save as save_metadata
+    from .generate_metadata import save as save_metadata
     save_metadata()
 
     _run_git("add", "metadata.json", "stats.json")

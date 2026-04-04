@@ -5,16 +5,16 @@ from xml.etree import ElementTree
 
 import requests
 
-import cache
-from config import (
+from . import cache
+from .config import (
     BACKOFF_BASE_SECONDS,
     LAW_API_BASE,
     LAW_API_KEY,
     MAX_RETRIES,
     REQUEST_DELAY_SECONDS,
 )
-from shared.http import make_request
-from shared.throttle import Throttle
+from core.http import make_request
+from core.throttle import Throttle
 
 logger = logging.getLogger(__name__)
 

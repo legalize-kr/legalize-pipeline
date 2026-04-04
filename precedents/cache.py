@@ -2,7 +2,7 @@
 
 import logging
 
-from shared.atomic_io import atomic_write_bytes
+from core.atomic_io import atomic_write_bytes
 
 from .config import PREC_CACHE_DIR
 

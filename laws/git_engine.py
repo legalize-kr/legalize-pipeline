@@ -4,7 +4,7 @@ import logging
 import os
 import subprocess
 
-from config import BOT_AUTHOR, WORKSPACE_ROOT
+from .config import BOT_AUTHOR, WORKSPACE_ROOT
 
 logger = logging.getLogger(__name__)
 

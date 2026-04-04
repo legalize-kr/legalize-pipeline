@@ -1,6 +1,6 @@
 """Central configuration for legalize-kr pipeline."""
 
-from shared.config import (  # noqa: F401 — re-exported
+from core.config import (  # noqa: F401 — re-exported
     BACKOFF_BASE_SECONDS,
     BOT_AUTHOR,
     CONCURRENT_WORKERS,

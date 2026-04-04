@@ -5,8 +5,8 @@ from xml.etree import ElementTree
 
 import requests
 
-from shared.http import make_request
-from shared.throttle import Throttle
+from core.http import make_request
+from core.throttle import Throttle
 
 from . import cache
 from .config import (

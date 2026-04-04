@@ -9,8 +9,8 @@ import json
 import logging
 from pathlib import Path
 
-from config import WORKSPACE_ROOT
-from shared.atomic_io import atomic_write_bytes, atomic_write_text
+from .config import WORKSPACE_ROOT
+from core.atomic_io import atomic_write_bytes, atomic_write_text
 
 logger = logging.getLogger(__name__)
 

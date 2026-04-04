@@ -4,7 +4,7 @@ import re
 
 import yaml
 
-from config import CHILD_SUFFIXES, KR_DIR, TYPE_TO_FILENAME
+from .config import CHILD_SUFFIXES, KR_DIR, TYPE_TO_FILENAME
 
 # Unicode normalization map for middle dots
 _DOT_NORMALIZE = str.maketrans({

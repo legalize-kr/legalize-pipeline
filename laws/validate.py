@@ -1,7 +1,7 @@
 """Validate all law Markdown files for consistency.
 
-Usage:
-    python validate.py
+Usage (from legalize-pipeline root):
+    python -m laws.validate
 
 Checks:
 - Valid YAML frontmatter with required fields
@@ -17,8 +17,8 @@ from pathlib import Path
 
 import yaml
 
-from config import CHILD_SUFFIXES, KR_DIR, WORKSPACE_ROOT
-from converter import normalize_law_name
+from .config import CHILD_SUFFIXES, KR_DIR, WORKSPACE_ROOT
+from .converter import normalize_law_name
 
 logger = logging.getLogger(__name__)
 

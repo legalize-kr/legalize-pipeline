@@ -1,11 +1,11 @@
 """Import laws from law.go.kr OpenAPI.
 
-Usage:
-    python import_laws.py                          # Import all laws
-    python import_laws.py --law-type 법률           # Import 법률 only
-    python import_laws.py --law-type 대통령령       # Import 대통령령 only
-    python import_laws.py --limit 10 --dry-run     # Preview first 10
-    python import_laws.py --csv doc/references/법령검색목록.csv  # CSV fallback
+Usage (from legalize-pipeline root):
+    python -m laws.import_laws                          # Import all laws
+    python -m laws.import_laws --law-type 법률           # Import 법률 only
+    python -m laws.import_laws --law-type 대통령령       # Import 대통령령 only
+    python -m laws.import_laws --limit 10 --dry-run     # Preview first 10
+    python -m laws.import_laws --csv doc/references/법령검색목록.csv  # CSV fallback
 """
 
 import argparse
@@ -16,11 +16,11 @@ from pathlib import Path
 
 import yaml
 
-import cache
-from api_client import get_law_detail, get_law_history, search_laws
-from checkpoint import get_processed_msts, mark_processed
-from config import KR_DIR, LAW_API_KEY
-from converter import (
+from . import cache
+from .api_client import get_law_detail, get_law_history, search_laws
+from .checkpoint import get_processed_msts, mark_processed
+from .config import KR_DIR, LAW_API_KEY
+from .converter import (
     format_date,
     get_law_path,
     law_to_markdown,
@@ -28,7 +28,7 @@ from converter import (
     parse_departments,
     reset_path_registry,
 )
-from git_engine import commit_law
+from .git_engine import commit_law
 
 logger = logging.getLogger(__name__)
 
@@ -479,7 +479,7 @@ def main():
 
     if not args.dry_run and committed > 0:
         logger.info("Generating metadata.json...")
-        from generate_metadata import save as save_metadata
+        from .generate_metadata import save as save_metadata
         save_metadata()
 
     logger.info(f"Total committed: {committed}")
