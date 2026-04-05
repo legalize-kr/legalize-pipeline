@@ -13,3 +13,4 @@ venv/
 *.log
 .checkpoint.json
 .cache/
+.coverage
