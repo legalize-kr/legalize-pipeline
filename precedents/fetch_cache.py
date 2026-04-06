@@ -5,14 +5,16 @@ then fetches and caches the detail XML for each one concurrently.
 
 Usage (from legalize-pipeline root):
     python -m precedents.fetch_cache                  # Fetch list + all details
-    python -m precedents.fetch_cache --skip-list      # Load IDs from all_ids.txt, skip pagination
+    python -m precedents.fetch_cache --skip-list      # Load IDs from precedent_ids.json, skip pagination
     python -m precedents.fetch_cache --limit 10       # Limit for testing
     python -m precedents.fetch_cache --workers 3      # Override concurrent workers (default: 5)
 """
 
 import argparse
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
 
 from core.counter import Counter
 
@@ -22,7 +24,8 @@ from .config import CONCURRENT_WORKERS, PREC_CACHE_DIR
 
 logger = logging.getLogger(__name__)
 
-_ALL_IDS_PATH = PREC_CACHE_DIR / "all_ids.txt"
+_IDS_PATH = PREC_CACHE_DIR / "precedent_ids.json"
+_KST = timezone(timedelta(hours=9))
 
 
 def fetch_all_ids() -> list[str]:
@@ -49,8 +52,13 @@ def fetch_all_ids() -> list[str]:
 
     # Save for future --skip-list runs
     PREC_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    _ALL_IDS_PATH.write_text("\n".join(all_ids), encoding="utf-8")
-    logger.info(f"Saved {len(all_ids)} IDs to {_ALL_IDS_PATH}")
+    data = {
+        "collected_at": datetime.now(_KST).isoformat(),
+        "total": len(all_ids),
+        "ids": all_ids,
+    }
+    _IDS_PATH.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    logger.info(f"Saved {len(all_ids)} IDs to {_IDS_PATH}")
 
     return all_ids
 
@@ -76,7 +84,7 @@ def main():
     parser.add_argument(
         "--skip-list",
         action="store_true",
-        help="Skip list pagination; load IDs from all_ids.txt (for resuming)",
+        help="Skip list pagination; load IDs from precedent_ids.json (for resuming)",
     )
     parser.add_argument(
         "--workers",
@@ -89,15 +97,13 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     if args.skip_list:
-        if not _ALL_IDS_PATH.exists():
-            logger.error(f"all_ids.txt not found at {_ALL_IDS_PATH}. Run without --skip-list first.")
+        if not _IDS_PATH.exists():
+            logger.error(f"precedent_ids.json not found at {_IDS_PATH}. Run without --skip-list first.")
             raise SystemExit(1)
-        all_ids = [
-            line.strip()
-            for line in _ALL_IDS_PATH.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        logger.info(f"Loaded {len(all_ids)} IDs from {_ALL_IDS_PATH}")
+        data = json.loads(_IDS_PATH.read_text(encoding="utf-8"))
+        all_ids = data["ids"]
+        collected_at = data.get("collected_at", "unknown")
+        logger.info(f"Loaded {len(all_ids)} IDs from {_IDS_PATH} (collected: {collected_at})")
     else:
         logger.info("Fetching precedent ID list...")
         all_ids = fetch_all_ids()

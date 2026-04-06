@@ -12,3 +12,7 @@ from core.config import (  # noqa: F401 — re-exported
 
 # Precedent-specific paths
 PREC_CACHE_DIR = WORKSPACE_ROOT / ".cache" / "precedent"
+PRECEDENT_KR_DIR = WORKSPACE_ROOT / "precedent-kr"
+
+COURT_TIER_MAP = {"400201": "대법원", "400202": "하급심"}
+KNOWN_CASE_TYPES = {"민사", "형사", "일반행정", "세무", "특허", "가사"}

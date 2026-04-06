@@ -30,15 +30,15 @@ python -m precedents.fetch_cache --limit 100
 
 ```bash
 # all_ids.txt 재사용, 목록 수집 생략 (캐시 확인만 수행)
-python -m precedents.fetch_cache --skip-list
+python -m precedents.fetch_cache --skip-list  # precedent_ids.json 재사용
 ```
 
 ### 동작
 
-1. `search_precedents()` 호출하여 판례 목록 페이지네이션 (또는 `--skip-list` 시 all_ids.txt 읽기)
+1. `search_precedents()` 호출하여 판례 목록 페이지네이션 (또는 `--skip-list` 시 precedent_ids.json 읽기)
 2. 각 판례의 상세 XML을 병렬로 다운로드
 3. 이미 캐시된 항목은 자동으로 건너뜀
-4. 수집된 ID 목록을 `all_ids.txt`에 저장 (이후 `--skip-list` 재사용)
+4. 수집된 ID 목록을 `precedent_ids.json`에 저장 (수집일시 포함, 이후 `--skip-list` 재사용)
 
 ## 캐시 구조
 
@@ -47,7 +47,7 @@ WORKSPACE_ROOT/
   .cache/
     precedent/
       {판례일련번호}.xml        # 판례 상세 API 원본 XML
-      all_ids.txt               # 수집된 판례 ID 목록
+      precedent_ids.json        # 수집된 판례 ID 목록 (collected_at, total, ids)
 ```
 
 캐시 파일은 원자적 쓰기(tempfile → rename)로 저장되어 병렬 실행에 안전합니다.

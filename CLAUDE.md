@@ -15,7 +15,7 @@
 | `legalize-kr/legalize-pipeline` | 수집·변환·검증 파이프라인 (이 저장소) |
 | `legalize-kr/legalize-web` | 웹사이트 (`legalize.kr`, GitHub Pages) |
 | `legalize-kr/compiler` | rebuild용 네이티브 컴파일러 (선택) |
-| `legalize-kr/precedent-kr` | 판례 데이터 (예정) |
+| `legalize-kr/precedent-kr` | 판례 데이터 (`{사건종류}/{법원등급}/{사건번호}.md`, `metadata.json`) |
 
 ## Directory Structure
 
@@ -47,6 +47,9 @@ precedents/            # 판례 파이프라인 (python -m precedents.fetch_cach
   cache.py             # .cache/precedent/{판례일련번호}.xml 캐시 (atomic write)
   api_client.py        # law.go.kr OpenAPI 래퍼 (target=prec)
   fetch_cache.py       # 전체 판례 목록 수집 + 상세 XML 병렬 캐시
+  converter.py         # XML → Markdown 변환 (frontmatter, 경로 계산, 충돌 처리)
+  import_precedents.py # 캐시 → Markdown 일괄 변환 (병렬 쓰기)
+  generate_metadata.py # metadata.json + stats.json 생성
 .github/workflows/     # CI/CD (daily-update.yml, full-import.yml)
 ```
 
@@ -63,7 +66,7 @@ CI에서는 `workspace/` 아래에 데이터 저장소를 체크아웃하고, `w
   .cache/detail/{MST}.xml              # 법령 API 상세 응답 캐시
   .cache/history/{법령명}.json          # 법령 개정 이력 캐시
   .cache/precedent/{판례일련번호}.xml   # 판례 API 상세 응답 캐시
-  .cache/precedent/all_ids.txt         # 수집된 판례 ID 목록 (--skip-list 재사용)
+  .cache/precedent/precedent_ids.json  # 수집된 판례 ID 목록 (collected_at, total, ids)
   .checkpoint.json                     # 법령 처리 상태
 ```
 
@@ -83,6 +86,20 @@ laws/checkpoint.py (processed_msts 추적)
 laws/generate_metadata.py (metadata.json + stats.json)
 ```
 
+#### 판례 변환 파이프라인
+
+```
+.cache/precedent/{id}.xml  (precedents/fetch_cache.py로 수집)
+    ↓
+precedents/converter.py (XML → Markdown + YAML frontmatter, 경로 충돌 처리)
+    ↓
+precedents/import_precedents.py (단일 스레드 파싱 → 병렬 쓰기)
+    ↓
+precedent-kr/{사건종류}/{법원등급}/{사건번호}.md
+    ↓
+precedents/generate_metadata.py (metadata.json + stats.json)
+```
+
 ### 실행 모드
 
 | 모드 | 엔트리포인트 | 용도 |
@@ -95,6 +112,9 @@ laws/generate_metadata.py (metadata.json + stats.json)
 | 히스토리 재구성 | `python -m laws.rebuild` | orphan branch, 시간순 커밋 |
 | 메타데이터 생성 | `python -m laws.generate_metadata` | `kr/` 스캔 → JSON |
 | 유효성 검증 | `python -m laws.validate` | frontmatter, Unicode, 정합성 |
+| 판례 캐시 수집 | `python -m precedents.fetch_cache` | API → .cache/precedent/ (병렬) |
+| 판례 변환 | `python -m precedents.import_precedents` | 캐시 → Markdown 변환 |
+| 판례 메타데이터 | `python -m precedents.generate_metadata` | metadata.json + stats.json 생성 |
 
 ## Configuration
 
@@ -202,7 +222,7 @@ feat|fix|chore|docs|ci: 설명
 # 전체 판례 목록 수집 및 상세 XML 캐시 (최초 실행)
 python -m precedents.fetch_cache
 
-# 이전에 수집한 all_ids.txt 재사용, 목록 재수집 생략
+# 이전에 수집한 precedent_ids.json 재사용, 목록 재수집 생략
 python -m precedents.fetch_cache --skip-list
 
 # 테스트용 (N건만)

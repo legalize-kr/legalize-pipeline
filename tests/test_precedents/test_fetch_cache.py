@@ -1,5 +1,6 @@
 """Tests for precedents/fetch_cache.py."""
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -16,7 +17,7 @@ def patch_prec_cache_dir(tmp_path: Path, monkeypatch):
     prec_dir.mkdir(parents=True)
     monkeypatch.setattr(prec_cache, "PREC_CACHE_DIR", prec_dir)
     monkeypatch.setattr(fetch_cache_mod, "PREC_CACHE_DIR", prec_dir)
-    monkeypatch.setattr(fetch_cache_mod, "_ALL_IDS_PATH", prec_dir / "all_ids.txt")
+    monkeypatch.setattr(fetch_cache_mod, "_IDS_PATH", prec_dir / "precedent_ids.json")
 
 
 def _make_search_result(ids: list[str], total: int, page: int = 1) -> dict:
@@ -42,17 +43,18 @@ def test_fetch_all_ids_pagination(tmp_path: Path):
 
 
 def test_fetch_all_ids_saves_file(tmp_path: Path):
-    """fetch_all_ids writes all_ids.txt."""
+    """fetch_all_ids writes precedent_ids.json with collected_at and ids."""
     page1 = _make_search_result(["111", "222"], total=2)
 
     with patch("precedents.fetch_cache.search_precedents", return_value=page1):
         fetch_cache_mod.fetch_all_ids()
 
-    all_ids_path = fetch_cache_mod._ALL_IDS_PATH
-    assert all_ids_path.exists()
-    content = all_ids_path.read_text(encoding="utf-8")
-    assert "111" in content
-    assert "222" in content
+    ids_path = fetch_cache_mod._IDS_PATH
+    assert ids_path.exists()
+    data = json.loads(ids_path.read_text(encoding="utf-8"))
+    assert set(data["ids"]) == {"111", "222"}
+    assert data["total"] == 2
+    assert "collected_at" in data
 
 
 def test_fetch_detail_task_skip_cached(tmp_path: Path):

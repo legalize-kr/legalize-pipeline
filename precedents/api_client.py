@@ -54,9 +54,9 @@ def search_precedents(
         "sort": sort,
     }
     if court:
-        params["court"] = court
+        params["curt"] = court
     if date_range:
-        params["date"] = date_range
+        params["prncYd"] = date_range
 
     resp = _request(f"{LAW_API_BASE}/lawSearch.do", params)
     root = ElementTree.fromstring(resp.content)
