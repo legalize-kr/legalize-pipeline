@@ -3,6 +3,7 @@
 import json
 import logging
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -95,6 +96,7 @@ def build_stats(metadata: dict) -> dict:
         "total": len(metadata),
         "amendments": count_law_commits(),
         "types": dict(type_counts),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 

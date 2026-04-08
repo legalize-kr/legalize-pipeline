@@ -105,7 +105,7 @@ def update(days: int = 7, law_type_filter: str | None = None, dry_run: bool = Fa
         if i % 50 == 0:
             logger.info(f"Progress: {i}/{len(new_laws)} (committed={committed}, errors={errors})")
 
-    if not dry_run and committed > 0:
+    if not dry_run:
         set_last_update(format_date(today))
 
     logger.info(f"Update done: committed={committed}, errors={errors}")

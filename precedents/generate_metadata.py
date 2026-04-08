@@ -76,7 +76,7 @@ def generate(output_dir: Path = PRECEDENT_KR_DIR) -> tuple[dict, int]:
             "사건번호": str(fm.get("사건번호", "")),
             "선고일자": str(fm.get("선고일자", "") or ""),
             "법원명": str(fm.get("법원명", "")),
-            "사건종류명": str(fm.get("사건종류", "")),
+            "사건종류": str(fm.get("사건종류", "")),
             "판결유형": str(fm.get("판결유형", "") or ""),
         }
 
@@ -93,10 +93,10 @@ def build_stats(metadata: dict, skipped_errors: int) -> dict:
 
     for entry in metadata.values():
         parts = entry["path"].split("/")
-        tier = parts[0] if parts else "미분류"
+        tier = parts[1] if len(parts) > 1 else "미분류"
         courts[tier] = courts.get(tier, 0) + 1
 
-        ct = entry.get("사건종류명", "") or "기타"
+        ct = parts[0] if parts else "기타"
         case_types[ct] = case_types.get(ct, 0) + 1
 
     return {

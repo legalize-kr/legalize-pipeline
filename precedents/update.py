@@ -84,10 +84,9 @@ def run(
     logger.info(f"Found {len(recent)} precedents in last {days} days")
 
     if not recent:
-        return {"found": 0, "new": 0, "committed": 0, "errors": 0}
+        return {"found": 0, "committed": 0, "errors": 0}
 
-    # Step 2: fetch detail for each, skip if already cached
-    new_count = 0
+    # Step 2: fetch detail for each and write/commit (git detects zero-diff)
     committed = 0
     errors = 0
 
@@ -106,35 +105,27 @@ def run(
             path = get_precedent_path(parsed)
             abs_path = output_dir / path
 
-            # Skip if file already exists and is up to date
-            if abs_path.exists():
-                logger.debug(f"Already exists: {path}")
-                continue
-
-            new_count += 1
-
             if dry_run:
-                logger.info(f"[dry-run] Would create: {path}")
+                logger.info(f"[dry-run] Would write: {path}")
                 continue
 
-            # Write and commit
             md = precedent_to_markdown(parsed)
             abs_path.parent.mkdir(parents=True, exist_ok=True)
             atomic_write_text(abs_path, md)
 
-            commit_precedent(path, parsed, cwd=output_dir, skip_dedup=False)
-            committed += 1
+            result = commit_precedent(path, parsed, cwd=output_dir, skip_dedup=False)
+            if result:
+                committed += 1
 
         except Exception as e:
             logger.error(f"Failed prec_id {prec_id}: {e}")
             errors += 1
 
         if i % 50 == 0:
-            logger.info(f"Progress: {i}/{len(recent)} (new={new_count}, committed={committed})")
+            logger.info(f"Progress: {i}/{len(recent)} (committed={committed})")
 
     stats = {
         "found": len(recent),
-        "new": new_count,
         "committed": committed,
         "errors": errors,
     }
@@ -152,4 +143,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     stats = run(days=args.days, dry_run=args.dry_run, output_dir=args.output_dir)
-    print(f"found={stats['found']} new={stats['new']} committed={stats['committed']} errors={stats['errors']}")
+    print(f"found={stats['found']} committed={stats['committed']} errors={stats['errors']}")
