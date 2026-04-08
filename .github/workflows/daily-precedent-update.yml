@@ -39,6 +39,13 @@ jobs:
         with:
           path: workspace/pipeline
 
+      - name: Checkout docs repo
+        uses: actions/checkout@v4
+        with:
+          repository: legalize-kr/legalize-web
+          token: ${{ secrets.REPO_PAT }}
+          path: docs-repo
+
       - name: Setup Python venv
         run: |
           python3 -m venv .venv
@@ -82,4 +89,20 @@ jobs:
             git push
           else
             echo "No new commits to push"
+          fi
+
+      - name: Update docs precedent stats
+        run: |
+          if [ -f workspace/stats.json ]; then
+            cd docs-repo
+            git fetch origin main
+            git reset --hard origin/main
+            # rename: precedent-kr/stats.json and laws stats.json collide in docs-repo root
+            cp ../workspace/stats.json precedent-stats.json
+            git add precedent-stats.json
+            git diff --staged --quiet && echo "No docs changes" && exit 0
+            git config user.name "legalize-kr-bot"
+            git config user.email "bot@legalize.kr"
+            git commit --author="legalize-kr-bot <bot@legalize.kr>" -m "chore: update precedent-stats.json"
+            git push origin main
           fi

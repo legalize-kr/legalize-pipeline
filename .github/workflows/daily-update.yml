@@ -79,12 +79,14 @@ jobs:
       - name: Update docs stats
         run: |
           if [ -f workspace/stats.json ]; then
-            cp workspace/stats.json docs-repo/stats.json
             cd docs-repo
+            git fetch origin main
+            git reset --hard origin/main
+            cp ../workspace/stats.json stats.json
+            git add stats.json
+            git diff --staged --quiet && echo "No docs changes" && exit 0
             git config user.name "legalize-kr-bot"
             git config user.email "bot@legalize.kr"
-            git add stats.json
-            git diff --cached --quiet && echo "No docs changes" && exit 0
             git commit --author="legalize-kr-bot <bot@legalize.kr>" -m "chore: update stats.json"
-            git push
+            git push origin main
           fi
