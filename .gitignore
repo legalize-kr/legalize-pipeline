@@ -14,3 +14,4 @@ venv/
 .checkpoint.json
 .cache/
 .coverage
+.failed_msts.json

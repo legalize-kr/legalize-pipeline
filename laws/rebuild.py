@@ -176,8 +176,20 @@ def rebuild_law_commits(entries: list[tuple[str, dict]], dry_run: bool = False) 
             )
             committed += 1
 
-        except Exception as e:
-            logger.error(f"  [{i}/{len(entries)}] Failed MST {mst} ({law_name}): {e}")
+        except ValueError as e:  # empty body (P1)
+            from .failures import log_failure, mark_failed_and_quarantine
+            log_failure("rebuild", str(mst), law_name, e)
+            path = WORKSPACE_ROOT / file_path
+            mark_failed_and_quarantine(
+                mst=str(mst), reason="empty_body", detail=str(e),
+                path=path, step="rebuild", law_name=law_name,
+            )
+            errors += 1
+        except Exception as e:  # all other failures (P3)
+            from .failures import log_failure, classify, mark_failed
+            log_failure("rebuild", str(mst), law_name, e)
+            mark_failed(mst=str(mst), reason=classify(e), detail=str(e),
+                        step="rebuild", law_name=law_name)
             errors += 1
 
         if i % 500 == 0:
@@ -228,12 +240,6 @@ def main():
     logger.info(f"Ready to rebuild with {len(entries)} law entries")
 
     if not args.dry_run:
-        # Save current branch
-        try:
-            current_branch = _run_git("rev-parse", "--abbrev-ref", "HEAD")
-        except RuntimeError:
-            current_branch = "main"
-
         create_orphan_branch(args.branch)
 
     # Step 1: Infrastructure commit
@@ -242,7 +248,7 @@ def main():
 
     # Step 2: Law commits (chronological)
     logger.info("=== Step 2: Law commits ===")
-    committed = rebuild_law_commits(entries, args.dry_run)
+    rebuild_law_commits(entries, args.dry_run)
 
     # Step 3: Metadata
     logger.info("=== Step 3: Metadata commit ===")

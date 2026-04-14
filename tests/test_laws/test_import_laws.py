@@ -185,6 +185,7 @@ def test_import_from_cache_flow(tmp_path: Path):
          patch("laws.import_laws.get_law_detail", return_value=detail), \
          patch("laws.import_laws.get_processed_msts", return_value=set()), \
          patch("laws.import_laws.mark_processed"), \
+         patch("laws.import_laws.law_to_markdown", return_value="# 민법\n\n내용"), \
          patch("laws.import_laws.commit_law", return_value="abc1234"):
         mock_cache.list_cached_msts.return_value = ["253527"]
         count = import_laws.import_from_cache()

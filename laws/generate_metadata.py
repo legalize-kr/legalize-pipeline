@@ -14,6 +14,48 @@ logger = logging.getLogger(__name__)
 
 METADATA_FILE = WORKSPACE_ROOT / "metadata.json"
 STATS_FILE = WORKSPACE_ROOT / "stats.json"
+ANOMALIES_FILE = WORKSPACE_ROOT / "anomalies.json"
+
+
+def classify_directories() -> dict:
+    """Scan kr/ for child-only directories and quarantined stale files.
+
+    Dotfiles (including '.법률.md.stale') are ignored when checking for
+    'present 법률.md' AND tracked separately as quarantined. This means
+    a directory with ONLY '.법률.md.stale' + '시행령.md' is classified
+    child_only (stale doesn't count as present).
+    """
+    child_only_dirs: list[str] = []
+    quarantined_stale: list[str] = []
+
+    if not KR_DIR.exists():
+        return {"child_only_dirs": [], "quarantined_stale": []}
+
+    for law_dir in sorted(p for p in KR_DIR.iterdir() if p.is_dir()):
+        files = list(law_dir.iterdir())
+        non_hidden = [f for f in files if f.is_file() and not f.name.startswith(".")]
+        hidden_stale = [
+            f for f in files
+            if f.is_file() and f.name.startswith(".") and f.name.endswith(".stale")
+        ]
+
+        basenames = {f.name for f in non_hidden}
+        child_filenames = {"시행령.md", "시행규칙.md"}
+        has_child = bool(basenames & child_filenames)
+        has_parent = bool(basenames - child_filenames) and any(
+            n.endswith(".md") for n in (basenames - child_filenames)
+        )
+
+        if has_child and not has_parent:
+            child_only_dirs.append(str(law_dir.relative_to(WORKSPACE_ROOT)))
+
+        for st in hidden_stale:
+            quarantined_stale.append(str(st.relative_to(WORKSPACE_ROOT)))
+
+    return {
+        "child_only_dirs": child_only_dirs,
+        "quarantined_stale": quarantined_stale,
+    }
 
 
 def parse_frontmatter(file_path: Path) -> dict | None:
@@ -91,17 +133,29 @@ def build_stats(metadata: dict) -> dict:
     """Build summary statistics from metadata."""
     from collections import Counter
 
+    from .failures import get_failed_msts, get_search_misses
+
     type_counts = Counter(m.get("법령구분", "") for m in metadata.values())
+    dirs = classify_directories()
+    failed = get_failed_msts()
+    misses = get_search_misses()
+
     return {
         "total": len(metadata),
         "amendments": count_law_commits(),
         "types": dict(type_counts),
+        "classifications": {
+            "child_only_count": len(dirs["child_only_dirs"]),
+            "failed_count": len(failed),
+            "search_miss_count": len(misses),
+            "quarantined_stale_count": len(dirs["quarantined_stale"]),
+        },
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
 def save(metadata: dict | None = None) -> int:
-    """Generate and save metadata.json and stats.json. Returns count of entries."""
+    """Generate and save metadata.json, stats.json, and anomalies.json. Returns count of entries."""
     if metadata is None:
         metadata = generate()
 
@@ -116,8 +170,30 @@ def save(metadata: dict | None = None) -> int:
         encoding="utf-8",
     )
 
+    from .failures import get_failed_msts, get_search_misses
+
+    dirs = classify_directories()
+    anomalies = {
+        "schema_version": 1,
+        "child_only_dirs": dirs["child_only_dirs"],
+        "failed_msts": [{"mst": k, **v} for k, v in get_failed_msts().items()],
+        "search_misses": [{"name": k, **v} for k, v in get_search_misses().items()],
+        "quarantined_stale": dirs["quarantined_stale"],
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    ANOMALIES_FILE.write_text(
+        json.dumps(anomalies, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
     logger.info(f"Generated metadata.json with {len(metadata)} entries")
     logger.info(f"Generated stats.json: {stats}")
+    logger.info(
+        f"Generated anomalies.json: child_only={len(dirs['child_only_dirs'])}, "
+        f"failed={len(anomalies['failed_msts'])}, "
+        f"search_misses={len(anomalies['search_misses'])}, "
+        f"quarantined={len(dirs['quarantined_stale'])}"
+    )
     return len(metadata)
 
 

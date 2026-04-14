@@ -138,6 +138,7 @@ def import_law_with_history(
             logger.info(f"  [{i}/{len(history)}] MST {mst} already processed, skipping")
             continue
 
+        file_path = None
         try:
             detail = get_law_detail(mst)
             meta = detail["metadata"]
@@ -178,8 +179,24 @@ def import_law_with_history(
                 committed += 1
                 logger.info(f"  [{i}/{len(history)}] Committed MST={mst} {prom_date} {amendment}")
 
-        except Exception as e:
-            logger.error(f"  [{i}/{len(history)}] Failed MST {mst}: {e}")
+        except ValueError as e:  # empty body (P1)
+            from .failures import log_failure, mark_failed, mark_failed_and_quarantine
+            log_failure("import_law_with_history", str(mst), law_name, e)
+            if file_path is not None:
+                mark_failed_and_quarantine(
+                    mst=str(mst), reason="empty_body", detail=str(e),
+                    path=KR_DIR.parent / file_path,
+                    step="import_law_with_history", law_name=law_name,
+                )
+            else:
+                mark_failed(mst=str(mst), reason="empty_body", detail=str(e),
+                            step="import_law_with_history", law_name=law_name)
+            errors += 1
+        except Exception as e:  # all other failures (P3)
+            from .failures import log_failure, classify, mark_failed
+            log_failure("import_law_with_history", str(mst), law_name, e)
+            mark_failed(mst=str(mst), reason=classify(e), detail=str(e),
+                        step="import_law_with_history", law_name=law_name)
             errors += 1
 
     logger.info(f"History import for {law_name}: committed={committed}, errors={errors}")
@@ -242,6 +259,7 @@ def import_from_cache(
     law_type_filter: str | None = None,
     limit: int | None = None,
     dry_run: bool = False,
+    only_orphans: bool = False,
 ) -> int:
     """Import laws from cached raw XML files (no API calls).
 
@@ -256,9 +274,23 @@ def import_from_cache(
         logger.warning("No cached data found. Run fetch_cache.py first.")
         return 0
 
-    processed = get_processed_msts()
-    msts = [m for m in msts if m not in processed]
-    logger.info(f"After filtering processed: {len(msts)} remaining")
+    if only_orphans:
+        from .generate_metadata import generate as _gen_metadata
+        from .failures import get_failed_msts
+        # generate() is keyed by MST, so keys ARE the on-disk MSTs
+        on_disk = set(_gen_metadata().keys())
+        processed = get_processed_msts()
+        failed = set(get_failed_msts().keys())
+        before = len(msts)
+        msts = sorted(set(msts) - on_disk - processed - failed)
+        logger.info(
+            f"only_orphans: {before} cached -> {len(msts)} orphans "
+            f"(on_disk={len(on_disk)} processed={len(processed)} failed={len(failed)})"
+        )
+    else:
+        processed = get_processed_msts()
+        msts = [m for m in msts if m not in processed]
+        logger.info(f"After filtering processed: {len(msts)} remaining")
 
     # Parse metadata from each cached XML to sort by date
     entries: list[tuple[str, dict]] = []
@@ -271,7 +303,10 @@ def import_from_cache(
                 continue
             entries.append((mst, detail))
         except Exception as e:
-            logger.error(f"Failed to parse cached MST {mst}: {e}")
+            from .failures import log_failure, classify, mark_failed
+            log_failure("import_from_cache.parse", str(mst), "", e)
+            mark_failed(mst=str(mst), reason=classify(e), detail=str(e),
+                        step="import_from_cache.parse", law_name="")
 
     # Sort by promulgation date (oldest first)
     entries.sort(key=lambda x: x[1]["metadata"].get("공포일자", ""))
@@ -289,6 +324,7 @@ def import_from_cache(
         law_name = meta.get("법령명한글", "")
         law_type = meta.get("법령구분", "")
 
+        file_path = None
         try:
             file_path = get_law_path(law_name, law_type)
             abs_path = KR_DIR.parent / file_path
@@ -312,8 +348,24 @@ def import_from_cache(
                 committed += 1
                 logger.info(f"  [{i}/{len(entries)}] Committed MST={mst} {prom_date} {law_name}")
 
-        except Exception as e:
-            logger.error(f"  [{i}/{len(entries)}] Failed MST {mst}: {e}")
+        except ValueError as e:  # empty body (P1)
+            from .failures import log_failure, mark_failed, mark_failed_and_quarantine
+            log_failure("import_from_cache", str(mst), law_name, e)
+            if file_path is not None:
+                mark_failed_and_quarantine(
+                    mst=str(mst), reason="empty_body", detail=str(e),
+                    path=KR_DIR.parent / file_path,
+                    step="import_from_cache", law_name=law_name,
+                )
+            else:
+                mark_failed(mst=str(mst), reason="empty_body", detail=str(e),
+                            step="import_from_cache", law_name=law_name)
+            errors += 1
+        except Exception as e:  # all other failures (P3)
+            from .failures import log_failure, classify, mark_failed
+            log_failure("import_from_cache", str(mst), law_name, e)
+            mark_failed(mst=str(mst), reason=classify(e), detail=str(e),
+                        step="import_from_cache", law_name=law_name)
             errors += 1
 
         if i % 100 == 0:
@@ -419,6 +471,7 @@ def import_from_csv(
         name = law["법령명"]
         law_type = law["법령구분명"]
 
+        file_path = None
         try:
             file_path = get_law_path(name, law_type)
             abs_path = KR_DIR.parent / file_path
@@ -438,14 +491,67 @@ def import_from_csv(
             if commit_law(file_path, commit_msg, date, mst):
                 mark_processed(mst)
                 committed += 1
-        except Exception as e:
-            logger.error(f"Failed MST {mst}: {e}")
+        except ValueError as e:  # empty body (P1)
+            from .failures import log_failure, mark_failed, mark_failed_and_quarantine
+            log_failure("import_from_csv", str(mst), name, e)
+            if file_path is not None:
+                mark_failed_and_quarantine(
+                    mst=str(mst), reason="empty_body", detail=str(e),
+                    path=KR_DIR.parent / file_path,
+                    step="import_from_csv", law_name=name,
+                )
+            else:
+                mark_failed(mst=str(mst), reason="empty_body", detail=str(e),
+                            step="import_from_csv", law_name=name)
+        except Exception as e:  # all other failures (P3)
+            from .failures import log_failure, classify, mark_failed
+            log_failure("import_from_csv", str(mst), name, e)
+            mark_failed(mst=str(mst), reason=classify(e), detail=str(e),
+                        step="import_from_csv", law_name=name)
 
         if i % 100 == 0:
             logger.info(f"Progress: {i}/{len(laws)} (committed={committed})")
 
     logger.info(f"CSV import done: committed={committed}")
     return committed
+
+
+# ---------------------------------------------------------------------------
+# Search API recovery helper (BLOCK-5)
+# ---------------------------------------------------------------------------
+
+def _run_search_api_recovery(list_path: Path | None) -> None:
+    """BLOCK-5: operator-supplied list; no-op if absent."""
+    from . import failures
+    from .reverse_index import resolve_canonical_mst
+    if not list_path:
+        logger.warning("search_api_noop_no_list: pass --missing-laws-list <path>")
+        return
+    names = [line.strip() for line in list_path.read_text(encoding="utf-8").splitlines()
+             if line.strip() and not line.startswith("#")]
+    logger.info(f"search_api_recovery: {len(names)} names to resolve")
+    for name in names:
+        try:
+            hits = search_laws(query=name)["laws"]
+        except Exception as e:
+            failures.mark_search_miss(name, reason="search_error", detail=str(e))
+            continue
+        if not hits:
+            failures.mark_search_miss(name, reason="no_hits", detail="")
+            continue
+        mst = resolve_canonical_mst(name, hits)
+        if not mst:
+            failures.mark_search_miss(name, reason="unresolved_canonical",
+                                      detail=f"candidates={len(hits)}")
+            continue
+        try:
+            get_law_detail(mst)  # write-through to cache via api_client
+            logger.info(f"search_api_recovery: cached {name} -> MST {mst}")
+        except Exception as e:
+            from .failures import log_failure, classify, mark_failed
+            log_failure("search_api_recovery", mst, name, e)
+            mark_failed(mst=str(mst), reason=classify(e), detail=str(e),
+                        step="search_api_recovery", law_name=name)
 
 
 # ---------------------------------------------------------------------------
@@ -460,12 +566,21 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--from-cache", action="store_true", help="Import from cached XML (offline, no API)")
     parser.add_argument("--csv", type=Path, help="CSV file path (fallback mode)")
+    parser.add_argument("--only-orphans", action="store_true",
+                        help="Only import MSTs in cache not yet on disk (after --from-cache)")
+    parser.add_argument("--search-api", action="store_true",
+                        help="Use operator-supplied name list to search API and fill gaps")
+    parser.add_argument("--missing-laws-list", type=Path,
+                        help="Path to newline-delimited law name list for --search-api")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     if args.from_cache:
-        committed = import_from_cache(args.law_type, args.limit, args.dry_run)
+        if args.search_api:
+            _run_search_api_recovery(args.missing_laws_list)
+        committed = import_from_cache(args.law_type, args.limit, args.dry_run,
+                                      only_orphans=args.only_orphans)
     elif args.csv:
         committed = import_from_csv(args.csv, args.law_type, args.limit, args.dry_run)
     elif args.law_name:

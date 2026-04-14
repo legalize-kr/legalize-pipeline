@@ -62,6 +62,7 @@ def update(days: int = 7, law_type_filter: str | None = None, dry_run: bool = Fa
         mst = law["법령일련번호"]
         name = law.get("법령명한글", "")
 
+        file_path = None
         try:
             detail = get_law_detail(mst)
             meta = detail["metadata"]
@@ -98,8 +99,24 @@ def update(days: int = 7, law_type_filter: str | None = None, dry_run: bool = Fa
                 committed += 1
                 logger.info(f"  [{i}/{len(new_laws)}] Committed MST={mst} {prom_date} {fetched_name}")
 
-        except Exception as e:
-            logger.error(f"  [{i}/{len(new_laws)}] Failed MST {mst}: {e}")
+        except ValueError as e:  # empty body (P1)
+            from .failures import log_failure, mark_failed, mark_failed_and_quarantine
+            log_failure("update", str(mst), name, e)
+            if file_path is not None:
+                mark_failed_and_quarantine(
+                    mst=str(mst), reason="empty_body", detail=str(e),
+                    path=KR_DIR.parent / file_path,
+                    step="update", law_name=name,
+                )
+            else:
+                mark_failed(mst=str(mst), reason="empty_body", detail=str(e),
+                            step="update", law_name=name)
+            errors += 1
+        except Exception as e:  # all other failures (P3)
+            from .failures import log_failure, classify, mark_failed
+            log_failure("update", str(mst), name, e)
+            mark_failed(mst=str(mst), reason=classify(e), detail=str(e),
+                        step="update", law_name=name)
             errors += 1
 
         if i % 50 == 0:

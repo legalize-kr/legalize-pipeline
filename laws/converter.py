@@ -255,6 +255,12 @@ def law_to_markdown(detail: dict) -> str:
         body_parts.append(articles_md)
 
     addenda = detail.get("addenda", [])
+
+    has_articles = bool(articles_md and articles_md.strip())
+    has_addenda_body = any((a.get("부칙내용") or "").strip() for a in addenda)
+    if not has_articles and not has_addenda_body:
+        raise ValueError("empty_body: law has neither articles nor addenda content")
+
     if addenda:
         body_parts.append("## 부칙")
         body_parts.append("")

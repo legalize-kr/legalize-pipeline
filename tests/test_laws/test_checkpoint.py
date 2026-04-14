@@ -1,6 +1,5 @@
 """Tests for laws/checkpoint.py."""
 
-import json
 from pathlib import Path
 
 import pytest
@@ -64,3 +63,22 @@ def test_load_corrupt_json(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(chk, "CHECKPOINT_FILE", checkpoint_file)
     result = chk.load()
     assert result == {}
+
+
+def test_schema_version_is_advisory_on_save():
+    data = {"processed_msts": ["111"]}
+    chk.save(data)
+    loaded = chk.load()
+    assert loaded["schema_version"] == 2
+
+
+def test_load_tolerates_missing_schema_version(tmp_path: Path, monkeypatch):
+    checkpoint_file = tmp_path / ".legacy_checkpoint.json"
+    checkpoint_file.write_text(
+        '{"processed_msts": ["aaa"], "last_update": "2020-01-01"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(chk, "CHECKPOINT_FILE", checkpoint_file)
+    result = chk.load()
+    assert result["processed_msts"] == ["aaa"]
+    assert "schema_version" not in result

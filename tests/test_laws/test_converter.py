@@ -11,6 +11,7 @@ from laws.converter import (
     format_date,
     get_group_and_filename,
     get_law_path,
+    law_to_markdown,
     normalize_law_name,
     parse_departments,
     reset_path_registry,
@@ -373,3 +374,58 @@ def test_dedent_content_preserves_relative_indent():
 def test_dedent_content_no_indent():
     text = "이미 flush된 줄"
     assert _dedent_content(text) == text
+
+
+# ---------------------------------------------------------------------------
+# law_to_markdown — empty body checks (P1)
+# ---------------------------------------------------------------------------
+
+def _minimal_detail(articles=None, addenda=None):
+    """Build a minimal detail dict for law_to_markdown tests."""
+    return {
+        "metadata": {
+            "법령명한글": "테스트법",
+            "법령MST": "1",
+            "법령ID": "",
+            "법령구분": "법률",
+            "법령구분코드": "",
+            "소관부처명": "",
+            "공포일자": "",
+            "공포번호": "",
+            "시행일자": "",
+            "법령분야": "",
+        },
+        "articles": articles if articles is not None else [],
+        "addenda": addenda if addenda is not None else [],
+    }
+
+
+def test_law_to_markdown_raises_on_empty_body():
+    detail = _minimal_detail(articles=[], addenda=[])
+    with pytest.raises(ValueError, match="empty_body"):
+        law_to_markdown(detail)
+
+
+def test_law_to_markdown_raises_when_addenda_all_empty():
+    detail = _minimal_detail(
+        articles=[],
+        addenda=[{"부칙내용": ""}, {"부칙내용": "   "}],
+    )
+    with pytest.raises(ValueError, match="empty_body"):
+        law_to_markdown(detail)
+
+
+def test_law_to_markdown_addenda_only_passes():
+    detail = _minimal_detail(
+        articles=[],
+        addenda=[{"부칙내용": "이 법은 공포일부터 시행한다."}],
+    )
+    result = law_to_markdown(detail)
+    assert "## 부칙" in result
+    assert "이 법은 공포일부터 시행한다." in result
+
+
+def test_law_to_markdown_articles_only_passes(sample_law_detail):
+    detail = {**sample_law_detail, "addenda": []}
+    result = law_to_markdown(detail)
+    assert result  # non-empty markdown string
