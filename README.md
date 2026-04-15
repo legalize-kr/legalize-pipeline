@@ -267,3 +267,4 @@ WORKSPACE_ROOT=/path/to/legalize-kr
 - 6개 MST는 파싱 불가능 (GitHub Issues 참조)
 - 2개 MST는 메타데이터 누락 (GitHub Issues 참조)
 - `소관부처` 필드는 항상 YAML 리스트 형식
+- **판례 긴 파일명 capping**: 형사 병합/분리 판결은 `사건번호` 한 필드에 수십~수백 개 사건번호를 쉼표로 나열하는 경우가 있어, 그대로 파일명으로 쓰면 macOS APFS의 `NAME_MAX=255 bytes` 제한을 초과해 `git checkout`이 실패한다. `precedents/converter.py`의 `cap_filename_bytes`가 파일명 stem을 UTF-8 기준 180바이트로 cap하고, 잘린 경우 `_{판례일련번호}`를 접미사로 붙여 고유성을 보존한다. `compiler-for-precedent`(Rust 재구현)도 동일한 로직을 갖는다.

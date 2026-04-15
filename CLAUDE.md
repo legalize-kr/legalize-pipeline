@@ -241,6 +241,15 @@ python -m precedents.fetch_cache --workers 3
 
 **환경변수**: `LAW_OC` (법령과 동일한 키)
 
+### 판례 파일명 capping (`NAME_MAX` 대응)
+
+형사 병합(병합)/분리(분리) 판결은 하나의 판결에 여러 연관 사건이 묶일 때 법원이 모든 사건번호를 쉼표로 연결하여 `사건번호` 단일 필드에 기록한다 (예: `2011고합669, 743, 746, ..., 985-1 (병합) (분리)`). 수십~수백 건이 누적되면 변환된 파일명이 500바이트+가 되어 macOS APFS의 `NAME_MAX=255 bytes` 제한을 넘고, `git checkout` 시 `File name too long` 오류로 작업 트리 체크아웃이 실패한다.
+
+- `precedents/converter.py:cap_filename_bytes(filename, serial)`이 파일명 stem을 UTF-8 기준 **180바이트**로 cap하고, truncation이 일어난 경우 `_{판례일련번호}`를 접미사로 붙인다. UTF-8 문자 경계에서 잘라 깨진 문자를 만들지 않는다.
+- `MAX_FILENAME_STEM_BYTES = 180`은 `.md` 확장자와 충돌 해소용 `_{serial}` 접미사(최악의 경우)까지 포함했을 때 255바이트 안에 들어가도록 여유를 둔 값이다.
+- `compiler-for-precedent`(Rust 재구현)의 `render.rs:cap_filename_bytes`도 동일 상수·동일 규약을 쓴다. 두 구현의 동등성이 깨지면 재컴파일된 `precedent-kr` 저장소가 API/프론트엔드와 어긋날 수 있으므로 한쪽을 바꿀 때는 양쪽을 같이 바꿔야 한다.
+- 업스트림 API가 지나치게 긴 사건번호 나열을 끝에서 `....`로 잘라 보내는 케이스가 있으며(예: `..._초기3461 ....md`), 현재 파이프라인은 이 잘림 흔적을 별도로 정리하지 않고 파일명에 그대로 남긴다.
+
 ## API
 
 - **데이터 출처**: [국가법령정보센터 OpenAPI](https://open.law.go.kr)

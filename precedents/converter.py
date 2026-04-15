@@ -106,6 +106,28 @@ def sanitize_case_number(case_no: str) -> str:
     return s
 
 
+# Max UTF-8 byte length for a filename stem. Leaves headroom for ".md" and the
+# collision "_{serial}" suffix inside the 255-byte NAME_MAX limit on APFS/ext4.
+MAX_FILENAME_STEM_BYTES = 180
+
+
+def cap_filename_bytes(filename: str, serial: str) -> str:
+    """Cap a filename stem to MAX_FILENAME_STEM_BYTES bytes (UTF-8).
+
+    병합/분리 형사 판결은 `사건번호` 한 필드에 수십~수백 개의 사건번호가
+    쉼표로 나열되어 들어오는 경우가 있어, 그대로 파일명으로 쓰면 macOS/APFS의
+    255-byte NAME_MAX 제한을 초과해 `git checkout`이 실패한다. 길이를 넘으면
+    UTF-8 문자 경계에서 잘라낸 뒤 `_{serial}`을 붙여 고유성과 추적성을 보존한다.
+    """
+    encoded = filename.encode("utf-8")
+    if len(encoded) <= MAX_FILENAME_STEM_BYTES:
+        return filename
+    suffix = f"_{serial}"
+    keep = MAX_FILENAME_STEM_BYTES - len(suffix.encode("utf-8"))
+    truncated = encoded[:keep].decode("utf-8", errors="ignore")
+    return f"{truncated}{suffix}"
+
+
 def html_to_markdown(html: str) -> str:
     """Convert HTML snippet to plain Markdown text.
 
@@ -142,7 +164,10 @@ def get_precedent_path(parsed: dict) -> str:
     case_type = normalize_case_type(parsed.get("사건종류명", ""))
 
     raw_case_no = parsed.get("사건번호", "").strip()
-    filename = sanitize_case_number(raw_case_no) if raw_case_no else serial
+    if raw_case_no:
+        filename = cap_filename_bytes(sanitize_case_number(raw_case_no), serial)
+    else:
+        filename = serial
 
     path = f"{case_type}/{court_tier}/{filename}.md"
 

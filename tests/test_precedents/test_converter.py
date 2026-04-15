@@ -333,3 +333,33 @@ def test_get_precedent_path_collision_yields_different_paths():
     path1 = conv.get_precedent_path(data1)
     path2 = conv.get_precedent_path(data2)
     assert path1 != path2
+
+
+def test_get_precedent_path_caps_long_merged_case_numbers():
+    """병합/분리 판결의 수백 건 나열 사건번호가 NAME_MAX를 넘지 않도록 capping."""
+    many = ", ".join(str(n) for n in range(700, 1000))
+    data = {
+        "판례정보일련번호": "123456",
+        "사건번호": f"2011고합669, {many} (병합) (분리)",
+        "법원종류코드": "400202",
+        "사건종류명": "형사",
+    }
+    path = conv.get_precedent_path(data)
+    leaf = path.rsplit("/", 1)[-1]
+    assert len(leaf.encode("utf-8")) <= 200, (
+        f"leaf exceeds NAME_MAX headroom: {len(leaf.encode('utf-8'))} bytes"
+    )
+    assert leaf.endswith("_123456.md")
+
+
+def test_cap_filename_bytes_is_noop_for_short_names():
+    assert conv.cap_filename_bytes("2024가합1", "100") == "2024가합1"
+
+
+def test_cap_filename_bytes_preserves_utf8_char_boundary():
+    """Truncation must not split a multi-byte UTF-8 character."""
+    stem = "가" * 200  # 600 bytes
+    out = conv.cap_filename_bytes(stem, "999")
+    out.encode("utf-8")  # would raise if split mid-codepoint
+    assert out.endswith("_999")
+    assert len(out.encode("utf-8")) <= conv.MAX_FILENAME_STEM_BYTES
