@@ -223,6 +223,48 @@ def test_format_date_empty():
 
 
 # ---------------------------------------------------------------------------
+# normalize_dangi_yyyymmdd
+# ---------------------------------------------------------------------------
+
+def test_normalize_dangi_converts_in_range():
+    assert conv.normalize_dangi_yyyymmdd("42890525") == "19560525"
+    assert conv.normalize_dangi_yyyymmdd("42000101") == "18670101"
+    assert conv.normalize_dangi_yyyymmdd("43301231") == "19971231"
+
+
+def test_normalize_dangi_passes_through_gregorian():
+    assert conv.normalize_dangi_yyyymmdd("20240101") == "20240101"
+    assert conv.normalize_dangi_yyyymmdd("19801231") == "19801231"
+
+
+def test_normalize_dangi_passes_through_out_of_range():
+    assert conv.normalize_dangi_yyyymmdd("41991231") == "41991231"
+    assert conv.normalize_dangi_yyyymmdd("43310101") == "43310101"
+
+
+def test_normalize_dangi_passes_through_invalid_input():
+    assert conv.normalize_dangi_yyyymmdd("") == ""
+    assert conv.normalize_dangi_yyyymmdd("abcd0101") == "abcd0101"
+    assert conv.normalize_dangi_yyyymmdd("2024") == "2024"
+
+
+def test_parse_precedent_xml_normalizes_dangi():
+    dangi_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<PrecService>
+  <판례정보일련번호>232199</판례정보일련번호>
+  <사건번호><![CDATA[4289행5]]></사건번호>
+  <선고일자>42890525</선고일자>
+  <법원명>서울고법</법원명>
+  <법원종류코드>400202</법원종류코드>
+  <사건종류명>일반행정</사건종류명>
+</PrecService>""".encode("utf-8")
+    result = conv.parse_precedent_xml(dangi_xml)
+    assert result is not None
+    assert result["선고일자"] == "19560525"
+    assert result["사건번호"] == "4289행5"
+
+
+# ---------------------------------------------------------------------------
 # precedent_to_markdown
 # ---------------------------------------------------------------------------
 

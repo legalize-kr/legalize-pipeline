@@ -25,6 +25,14 @@ _BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _MULTI_BLANK_RE = re.compile(r"\n{3,}")
 
+# Dangi era → Gregorian offset (CE = Dangi − 2333).
+# Older upstream precedents (e.g. 1956) arrive with 4-digit 단기 years (42890525)
+# instead of 서기 (19560525); normalize once at parse time so sorting, commit
+# timestamps, and frontmatter all agree on Gregorian.
+_DANGI_EPOCH_OFFSET = 2333
+_DANGI_YEAR_MIN = 4200  # ≈ 1867 CE, conservative floor for realistic legal records
+_DANGI_YEAR_MAX = 4330  # ≈ 1997 CE; newer upstream records are always Gregorian
+
 # Tracks assigned paths within an import session to detect collisions.
 # Maps path -> 판례정보일련번호
 _assigned_paths: dict[str, str] = {}
@@ -35,12 +43,24 @@ def reset_path_registry() -> None:
     _assigned_paths.clear()
 
 
+def normalize_dangi_yyyymmdd(date: str) -> str:
+    """Convert a 단기(Dangi) YYYYMMDD year to 서기(Gregorian); pass through otherwise."""
+    if len(date) != 8 or not date.isdigit():
+        return date
+    year = int(date[:4])
+    if not (_DANGI_YEAR_MIN <= year <= _DANGI_YEAR_MAX):
+        return date
+    return f"{year - _DANGI_EPOCH_OFFSET:04d}{date[4:]}"
+
+
 def parse_precedent_xml(raw_xml: bytes) -> dict | None:
     """Parse PrecService XML. Returns None if root tag is not PrecService."""
     root = ElementTree.fromstring(raw_xml)
     if root.tag != "PrecService":
         return None
-    return {field: (root.findtext(field) or "") for field in _15_FIELDS}
+    parsed = {field: (root.findtext(field) or "") for field in _15_FIELDS}
+    parsed["선고일자"] = normalize_dangi_yyyymmdd(parsed["선고일자"])
+    return parsed
 
 
 def normalize_court_name(name: str) -> str:
