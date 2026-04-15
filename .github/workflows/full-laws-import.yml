@@ -68,7 +68,12 @@ jobs:
           . ../../.venv/bin/activate
           if [ ! -d "../.cache/detail" ] || [ -z "$(ls -A ../.cache/detail/ 2>/dev/null)" ]; then
             echo "Cache missing or empty, building..."
-            python -m laws.fetch_cache
+            if ! python -m laws.fetch_cache 2>&1 | tee /tmp/fetch_cache.log; then
+              echo "::error::fetch_cache failed. If this is an invariant breach, inspect allowlist at laws/known_empty_history.yaml."
+              grep -A 10 "History cache invariant violated" /tmp/fetch_cache.log || true
+              grep -A 3  "Allowlist pre-flight failed"      /tmp/fetch_cache.log || true
+              exit 1
+            fi
           else
             echo "Cache exists ($(ls ../.cache/detail/*.xml 2>/dev/null | wc -l) detail files)"
           fi

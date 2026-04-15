@@ -70,17 +70,8 @@ jobs:
       - name: Report import failures
         working-directory: workspace
         run: |
-          python - <<'PY'
-          import json, os
-          p = '.failed_msts.json'
-          if not os.path.exists(p):
-              print("::notice::import_failure_count=0 search_miss_count=0")
-          else:
-              d = json.load(open(p))
-              f = len(d.get('failed_msts', {}))
-              s = len(d.get('search_misses', {}))
-              print(f"::notice::import_failure_count={f} search_miss_count={s}")
-          PY
+          . ../.venv/bin/activate
+          PYTHONPATH="$(pwd)/pipeline" python -m laws._ci.delta_gate
 
       - name: Push law changes
         working-directory: workspace

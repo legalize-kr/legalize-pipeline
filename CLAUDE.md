@@ -257,3 +257,39 @@ python -m precedents.fetch_cache --workers 3
   의 `NoResultError`와 `.cache/precedent/_no_result_ids.txt` 네거티브 캐시로
   격리한다. 기존 잘못된 캐시는 `python -m precedents.cleanup_no_result`로 이관
   가능. 자세한 내용은 루트 `KNOWN_ISSUES.md` §10 참조.
+
+## History Allowlist & Failure Baseline
+
+### full-laws-import.yml 불변성 실패 대응
+
+- 에러 메시지의 stem 이름을 검사합니다.
+- Unicode/긴 이름 클래스면 `laws/known_empty_history.yaml`에 추가 (추적 이슈, 3~9개월 만료 설정).
+- 회귀 클래스면 pagination/fetch 경로 진단 후 추가합니다.
+
+### daily-laws-update.yml 델타 게이트 실패 (exit 1)
+
+- `::error::` 출력에서 `(mst, reason)` 튜플을 읽습니다.
+- 기존 MST의 reason이 변경되면 근본원인 진단 필요 (의미 변경).
+- 수정 후: `cp workspace/.failed_msts.json workspace/pipeline/.failure-baseline.json` → pipeline 저장소에 커밋 (legalize-kr 아님).
+
+### 일시적 경고 (::warning::, api_error 24h 내)
+
+- 다음 날까지 지속되지 않으면 조치 불필요.
+- law.go.kr 일시적 오류는 예상 잡음입니다.
+
+### allowlist 항목 expiry 임박
+
+- 다음 `fetch_cache` 실행 시 불변성 위반.
+- 버그 수정됨 → 항목 제거 또는 만료일 연장 (코드 변경 없는 bump는 안티패턴).
+
+### ::notice::allowlist_orphan
+
+- allowlist stem의 캐시 파일이 없음 → 다음 PR에서 allowlist 항목 제거.
+
+### 기본 규칙
+
+- **기존 실패 분류 후 baseline 갱신**: 현재 실패가 모두 예상 범주에 속함을 확인한 후에만 갱신.
+- **파일 위치**: `.failure-baseline.json` → `legalize-pipeline/`; `known_empty_history.yaml` → `legalize-pipeline/laws/`.
+- **hash-truncated stem 원래 이름 복구**: `.omc/logs/history-recovery-{date}.txt` 또는 `laws.api_client.search_laws(stem_prefix)`.
+- **초기 baseline 시드**: 청정 복구 후 `python -m laws.update --days 7 --dry-run` → `.failed_msts.json` 검사 → `cp` → commit.
+- **금지 사항**: 레드 실행에서 baseline 갱신 금지.
