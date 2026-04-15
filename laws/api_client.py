@@ -206,9 +206,11 @@ def get_law_history(law_name: str) -> list[dict]:
     import re
 
     cached = cache.get_history(law_name)
-    if cached is not None:
+    if cached:
         logger.debug(f"Cache hit: history law_name={law_name}")
         return cached
+    if cached == []:
+        logging.info("rewriting poisoned empty cache for %s", law_name)
 
     all_entries: list[dict] = []
     page = 1
@@ -225,7 +227,6 @@ def get_law_history(law_name: str) -> list[dict]:
         # Parse table rows: each row has MST in link + td columns
         # Columns: 순번 | 법령명 | 소관부처 | 제개정구분 | 법종구분 | 공포번호 | 공포일자 | 시행일자 | 현행연혁
         rows = re.findall(r"<tr[^>]*>(.*?)</tr>", resp.text, re.DOTALL)
-        found = 0
         for row in rows:
             mst_match = re.search(r"MST=(\d+)", row)
             if not mst_match:
@@ -249,9 +250,8 @@ def get_law_history(law_name: str) -> list[dict]:
                 "공포일자": prom_date,
                 "시행일자": enf_date,
             })
-            found += 1
 
-        if found == 0 or len(rows) < 10:
+        if len(rows) < 10:
             break
         page += 1
 

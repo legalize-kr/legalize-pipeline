@@ -62,6 +62,11 @@ def _history_path(law_name: str) -> Path:
     return CACHE_DIR / "history" / _safe_filename(law_name, ".json")
 
 
+def history_path_for(law_name: str) -> Path:
+    """Return the cache path for a law's history JSON (public accessor)."""
+    return _history_path(law_name)
+
+
 def get_history(law_name: str) -> list[dict] | None:
     """Read cached amendment history for a law. Returns parsed list or None."""
     path = _history_path(law_name)
