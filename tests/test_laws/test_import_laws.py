@@ -16,8 +16,6 @@ def patch_dirs(tmp_path: Path, monkeypatch):
     kr_dir = tmp_path / "kr"
     kr_dir.mkdir()
     monkeypatch.setattr(import_laws, "KR_DIR", kr_dir)
-    import laws.converter as conv
-    monkeypatch.setattr(conv, "KR_DIR", kr_dir)
     import laws.config as lconf
     monkeypatch.setattr(lconf, "KR_DIR", kr_dir)
     reset_path_registry()

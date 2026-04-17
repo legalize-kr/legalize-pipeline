@@ -86,7 +86,8 @@ def update(
                 continue
 
             fetched_name = meta.get("법령명한글", name)
-            file_path = get_law_path(fetched_name, law_type)
+            law_id = meta.get("법령ID", "")
+            file_path = get_law_path(fetched_name, law_type, law_id)
             abs_path = KR_DIR.parent / file_path
 
             meta["제개정구분"] = law.get("제개정구분명", meta.get("제개정구분", ""))

@@ -142,7 +142,8 @@ def rebuild_law_commits(entries: list[tuple[str, dict]], dry_run: bool = False) 
         if not prom_date or len(prom_date) != 10:
             prom_date = "2000-01-01"
 
-        file_path = get_law_path(law_name, law_type)
+        law_id = meta.get("법령ID", "")
+        file_path = get_law_path(law_name, law_type, law_id)
 
         if dry_run:
             if i <= 5 or i % 500 == 0 or i == len(entries):
