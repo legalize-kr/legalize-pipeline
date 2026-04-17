@@ -5,7 +5,7 @@ import re
 
 import yaml
 
-from .config import CHILD_SUFFIXES, KR_DIR, TYPE_TO_FILENAME
+from .config import CHILD_SUFFIXES, TYPE_TO_FILENAME
 
 
 class _QuotedStr(str):
@@ -85,9 +85,11 @@ def get_group_and_filename(law_name: str, law_type: str) -> tuple[str, str]:
     return normalized.replace(" ", ""), filename
 
 
-# Tracks assigned paths during an import session to detect collisions.
-# Maps path -> (law_name, law_type)
-_assigned_paths: dict[str, tuple[str, str]] = {}
+# Tracks assigned paths during an import session to detect genuine collisions.
+# Maps canonical path -> 법령ID (empty string when ID is unknown).
+# Ministry name changes for the same law share the same 법령ID and thus
+# always resolve to the same canonical path — no qualifier needed.
+_assigned_paths: dict[str, str] = {}
 
 
 def reset_path_registry():
@@ -95,34 +97,29 @@ def reset_path_registry():
     _assigned_paths.clear()
 
 
-def get_law_path(law_name: str, law_type: str) -> str:
+def get_law_path(law_name: str, law_type: str, law_id: str = "") -> str:
     """Get the relative file path for a law (e.g., kr/민법/법률.md).
 
-    Handles collisions: if two laws map to the same path (e.g., multiple
-    시행규칙 from different ministries), appends a type qualifier like
-    시행규칙(총리령).md / 시행규칙(부령).md.
-
-    Also checks the filesystem for pre-existing qualified paths from
-    previous import sessions (e.g., rebuild), so incremental updates
-    write to the correct file.
+    Two laws sharing the same structural path (e.g., two 시행규칙 entries)
+    are considered the *same* law when their 법령ID matches — ministry name
+    changes do NOT create a new file.  A genuine collision (different 법령ID
+    at the same structural path) appends a law_type qualifier such as
+    시행규칙(총리령).md.
     """
     group, filename = get_group_and_filename(law_name, law_type)
-    qualified = f"kr/{group}/{filename}({law_type}).md"
-
-    # If a qualified path already exists on disk, use it
-    if (KR_DIR.parent / qualified).exists():
-        _assigned_paths[qualified] = (law_name, law_type)
-        return qualified
-
     path = f"kr/{group}/{filename}.md"
 
-    existing = _assigned_paths.get(path)
-    if existing is not None and existing != (law_name, law_type):
-        _assigned_paths[qualified] = (law_name, law_type)
-        return qualified
+    existing_id = _assigned_paths.get(path)
 
-    _assigned_paths[path] = (law_name, law_type)
-    return path
+    # No collision when: path is free, same law_id, or either ID is unknown.
+    if existing_id is None or not law_id or not existing_id or existing_id == law_id:
+        _assigned_paths[path] = law_id
+        return path
+
+    # Genuine collision: a *different* law already holds this canonical path.
+    qualified = f"kr/{group}/{filename}({law_type}).md"
+    _assigned_paths[qualified] = law_id
+    return qualified
 
 
 def build_frontmatter(metadata: dict) -> dict:

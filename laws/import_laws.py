@@ -148,7 +148,8 @@ def import_law_with_history(
                 continue
 
             fetched_name = meta.get("법령명한글", law_name)
-            file_path = get_law_path(fetched_name, law_type_name)
+            law_id = meta.get("법령ID", "")
+            file_path = get_law_path(fetched_name, law_type_name, law_id)
             abs_path = KR_DIR.parent / file_path
 
             # Merge history metadata into detail metadata
@@ -326,7 +327,8 @@ def import_from_cache(
 
         file_path = None
         try:
-            file_path = get_law_path(law_name, law_type)
+            law_id = meta.get("법령ID", "")
+            file_path = get_law_path(law_name, law_type, law_id)
             abs_path = KR_DIR.parent / file_path
             prom_date = format_date(meta.get("공포일자", ""))
 
@@ -473,7 +475,7 @@ def import_from_csv(
 
         file_path = None
         try:
-            file_path = get_law_path(name, law_type)
+            file_path = get_law_path(name, law_type, law.get("법령ID", ""))
             abs_path = KR_DIR.parent / file_path
 
             if dry_run:

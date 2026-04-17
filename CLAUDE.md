@@ -181,7 +181,28 @@ feat|fix|chore|docs|ci: 설명
 - `{법률명} 시행규칙` → `kr/{법률명}/시행규칙.md`
 - 접미사 없는 법률 → `kr/{법률명}/법률.md`
 - 독립 대통령령 → `kr/{대통령령명}/대통령령.md`
-- 경로 충돌 시 `시행규칙(부령).md` 형태로 법령구분 한정자 추가
+- 경로 충돌 판정 기준: **법령ID** — 같은 법령ID는 부처명이 달라도 동일 법령으로 취급, 항상 같은 파일에 덮어씀
+- 진짜 충돌(다른 법령ID가 같은 구조적 경로를 가질 때)만 `시행규칙(총리령).md` 형태 한정자 사용
+- **부처명 변경은 경로에 영향 없음** — 경로는 `법령ID`로만 결정, 부처명은 frontmatter에만 기록
+
+### 파편화 마이그레이션 (laws/migrate_ministry_paths.py)
+
+기존 부처명 파편화 파일(예: `시행규칙(안전행정부령).md` + `시행규칙(행정안전부령).md`)을 통합:
+
+```bash
+# 현황 확인 (dry-run)
+python -m laws.migrate_ministry_paths
+
+# 실제 적용
+python -m laws.migrate_ministry_paths --execute
+
+# 본문 차이가 있는 쌍도 강제 통합
+python -m laws.migrate_ministry_paths --execute --force-merge-lossy
+```
+
+- 같은 `법령ID`를 가진 같은 디렉토리 내 파일들을 `공포일자` 최신 기준으로 통합
+- winner(최신)의 본문 분량이 loser의 30% 미만인 쌍은 `REQUIRES_MANUAL_REVIEW`로 표시하고 기본적으로 건너뜀 (개정으로 인한 정상적인 분량 변화는 통과)
+- 법령명 변경(다른 디렉토리, 같은 법령ID)은 별도 보고만 함
 
 ### Markdown 변환 규칙 (laws/converter.py)
 

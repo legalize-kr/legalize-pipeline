@@ -149,20 +149,25 @@ def test_law_path_enforcement_decree():
     assert path == "kr/민법/시행령.md"
 
 
-def test_law_path_collision():
-    """Two different laws mapping to the same base path get a type qualifier."""
-    # First registration occupies the base path
-    path1 = get_law_path("민법 시행규칙", "총리령")
-    # Second registration (different type) collides → qualified
-    path2 = get_law_path("민법 시행규칙", "부령")
+def test_law_path_collision_different_law_id():
+    """Two genuinely different laws at the same structural path get a type qualifier."""
+    path1 = get_law_path("민법 시행규칙", "총리령", "001111")
+    path2 = get_law_path("민법 시행규칙", "부령", "002222")
     assert path1 == "kr/민법/시행규칙.md"
-    assert "(부령)" in path2 or "(총리령)" in path2
+    assert "(부령)" in path2
+
+
+def test_law_path_same_law_id_no_collision():
+    """Same law_id with different ministry names (rename) resolves to the same path."""
+    path1 = get_law_path("민법 시행규칙", "안전행정부령", "001111")
+    path2 = get_law_path("민법 시행규칙", "행정안전부령", "001111")
+    assert path1 == path2 == "kr/민법/시행규칙.md"
 
 
 def test_law_path_same_law_same_path():
-    """Same (law_name, law_type) pair always returns the same path."""
-    path1 = get_law_path("민법", "법률")
-    path2 = get_law_path("민법", "법률")
+    """Same (law_name, law_type, law_id) always returns the same path."""
+    path1 = get_law_path("민법", "법률", "000001")
+    path2 = get_law_path("민법", "법률", "000001")
     assert path1 == path2
 
 
@@ -174,33 +179,28 @@ def test_reset_path_registry():
     assert path == "kr/민법/법률.md"
 
 
-def test_law_path_preexisting_qualified(tmp_path: Path, monkeypatch):
-    """If a qualified file already exists on disk, use it."""
-    import laws.converter as conv
+def test_law_path_unknown_id_no_collision():
+    """When law_id is unknown (empty), paths do not collide with each other."""
+    path1 = get_law_path("민법 시행규칙", "총리령", "")
+    path2 = get_law_path("민법 시행규칙", "부령", "")
+    # Both have empty id — treat as same logical law, no collision
+    assert path1 == path2 == "kr/민법/시행규칙.md"
 
-    # Create the qualified file on disk
-    kr_dir = tmp_path / "kr"
-    qualified_dir = kr_dir / "민법"
-    qualified_dir.mkdir(parents=True)
-    (qualified_dir / "시행규칙(부령).md").touch()
 
-    # Monkeypatch KR_DIR so the converter looks in tmp_path
-    monkeypatch.setattr(conv, "_assigned_paths", {})
-    # We need KR_DIR.parent == tmp_path
-    import laws.config as lconf
-    monkeypatch.setattr(lconf, "KR_DIR", kr_dir)
+def test_law_path_genuine_collision_different_id():
+    """Different law_ids at same structural path: second gets a law_type qualifier."""
+    path1 = get_law_path("민법 시행규칙", "총리령", "AAA")
+    path2 = get_law_path("민법 시행규칙", "부령", "BBB")
+    assert path1 == "kr/민법/시행규칙.md"
+    assert path2 == "kr/민법/시행규칙(부령).md"
 
-    # Re-import get_law_path so it picks up patched KR_DIR
-    from laws.converter import get_law_path as glp
-    # The function reads KR_DIR from laws.config at import time via the module attribute
-    # We patch the module-level reference inside converter
-    import laws.converter as lconv
-    monkeypatch.setattr(lconv, "KR_DIR", kr_dir, raising=False)
 
-    # Mock the path check: qualified path should exist
-    # We use monkeypatch on Path.exists — simpler approach: just call with real fs
-    path = glp("민법 시행규칙", "부령")
-    assert "부령" in path
+def test_law_path_no_disk_check():
+    """get_law_path does not consult the filesystem — collision is ID-based only."""
+    # Even if hypothetically a qualified file existed on disk, same law_id → canonical path
+    path = get_law_path("민법 시행규칙", "부령", "001111")
+    assert path == "kr/민법/시행규칙.md"
+    assert "(" not in path
 
 
 # ---------------------------------------------------------------------------
