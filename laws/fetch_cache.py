@@ -166,11 +166,21 @@ def _assert_no_empty_history_cache() -> None:
 
     problems: list[str] = []
     if unallowlisted:
-        names = [e["stem"] for e in unallowlisted]
-        problems.append(f"Unallowlisted empty ({len(unallowlisted)}): {names}")
+        parts = []
+        for e in unallowlisted:
+            piece = e["stem"]
+            if e.get("original_name_hint"):
+                piece += f" [hint: {e['original_name_hint']}]"
+            parts.append(piece)
+        problems.append(f"Unallowlisted empty ({len(unallowlisted)}): {parts}")
     if expired:
-        names = [e["stem"] for e in expired]
-        problems.append(f"Allowlist expired ({len(expired)}): {names}")
+        parts = []
+        for e in expired:
+            parts.append(
+                f"{e['stem']} (original_name={e['original_name']!r}, "
+                f"tracking_issue={e['tracking_issue']}, expires_on={e['expires_on']})"
+            )
+        problems.append(f"Allowlist expired ({len(expired)}): {parts}")
     if malformed_paths:
         problems.append(f"Malformed ({len(malformed_paths)}): {malformed_paths}")
 

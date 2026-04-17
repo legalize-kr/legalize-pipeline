@@ -70,7 +70,7 @@ def test_empty_body_in_update_quarantines_existing_markdown(tmp_path, monkeypatc
     monkeypatch.setattr(update_mod, "reset_path_registry", lambda: None)
 
     # Stub get_law_path to return predictable path
-    monkeypatch.setattr(update_mod, "get_law_path", lambda name, law_type: f"kr/{name}/법률.md")
+    monkeypatch.setattr(update_mod, "get_law_path", lambda name, law_type, law_id="": f"kr/{name}/법률.md")
 
     update_mod.update(days=1, dry_run=False)
 
