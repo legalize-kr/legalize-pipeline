@@ -176,7 +176,8 @@ def test_import_from_cache_flow(tmp_path: Path):
             "공포일자": "20240101", "공포번호": "20000", "시행일자": "20240101",
             "제개정구분": "일부개정", "법령분야": "민사",
         },
-        "articles": [], "addenda": [], "raw_xml": b"<law/>",
+        "articles": [{"조문번호": "1", "조문제목": "목적", "조문내용": "제1조(목적) 이 법은...", "항": []}],
+        "addenda": [], "raw_xml": b"<law/>",
     }
 
     with patch("laws.import_laws.cache") as mock_cache, \
