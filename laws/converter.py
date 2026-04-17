@@ -86,39 +86,52 @@ def get_group_and_filename(law_name: str, law_type: str) -> tuple[str, str]:
 
 
 # Tracks assigned paths during an import session to detect genuine collisions.
-# Maps canonical path -> 법령ID (empty string when ID is unknown).
-# Ministry name changes for the same law share the same 법령ID and thus
-# always resolve to the same canonical path — no qualifier needed.
+# Mirrors compiler::PathRegistry (Rust): forward map (path -> 법령ID) *and*
+# reverse index (법령ID -> path). The reverse index ensures that later
+# revisions of the same law — even after a rename or ministry change —
+# always resolve to the path that was first assigned to that 법령ID.
 _assigned_paths: dict[str, str] = {}
+_by_id: dict[str, str] = {}
 
 
 def reset_path_registry():
     """Clear the collision registry (call before each import run)."""
     _assigned_paths.clear()
+    _by_id.clear()
 
 
 def get_law_path(law_name: str, law_type: str, law_id: str = "") -> str:
     """Get the relative file path for a law (e.g., kr/민법/법률.md).
 
-    Two laws sharing the same structural path (e.g., two 시행규칙 entries)
-    are considered the *same* law when their 법령ID matches — ministry name
-    changes do NOT create a new file.  A genuine collision (different 법령ID
-    at the same structural path) appends a law_type qualifier such as
-    시행규칙(총리령).md.
+    Semantics match ``compiler::PathRegistry::get_law_path``:
+
+    1. If ``law_id`` already has an assigned path (from an earlier revision),
+       reuse it — even if the current ``law_name`` would compute a different
+       structural path (handles renames) or another law now occupies the
+       canonical path.
+    2. Otherwise, if the canonical ``kr/{group}/{filename}.md`` is free or
+       holds the same ``law_id``, return it.
+    3. Otherwise, a *different* law already holds the canonical path, so
+       return the qualified ``kr/{group}/{filename}({law_type}).md``.
     """
+    if law_id and law_id in _by_id:
+        return _by_id[law_id]
+
     group, filename = get_group_and_filename(law_name, law_type)
     path = f"kr/{group}/{filename}.md"
-
     existing_id = _assigned_paths.get(path)
 
-    # No collision when: path is free, same law_id, or either ID is unknown.
-    if existing_id is None or not law_id or not existing_id or existing_id == law_id:
+    if existing_id is None or existing_id == law_id:
         _assigned_paths[path] = law_id
+        if law_id:
+            _by_id[law_id] = path
         return path
 
     # Genuine collision: a *different* law already holds this canonical path.
     qualified = f"kr/{group}/{filename}({law_type}).md"
     _assigned_paths[qualified] = law_id
+    if law_id:
+        _by_id[law_id] = qualified
     return qualified
 
 
@@ -279,16 +292,18 @@ def law_to_markdown(detail: dict) -> str:
     normalized_name = normalize_law_name(metadata.get("법령명한글", ""))
     body_parts = [f"# {normalized_name}", ""]
 
-    articles_md = articles_to_markdown(detail.get("articles", []))
+    articles = detail.get("articles", [])
+    addenda = detail.get("addenda", [])
+
+    articles_md = articles_to_markdown(articles)
     if articles_md:
         body_parts.append(articles_md)
-
-    addenda = detail.get("addenda", [])
 
     has_articles = bool(articles_md and articles_md.strip())
     has_addenda_body = any((a.get("부칙내용") or "").strip() for a in addenda)
     if not has_articles and not has_addenda_body:
         raise ValueError("empty_body: law has neither articles nor addenda content")
+
 
     if addenda:
         body_parts.append("## 부칙")
