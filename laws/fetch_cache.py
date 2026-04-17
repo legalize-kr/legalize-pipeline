@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from . import cache
 from .api_client import get_law_detail, get_law_history, search_laws
 from .config import CONCURRENT_WORKERS
+from .history_allowlist import filter_and_check
 from core.counter import Counter
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,45 @@ def _fetch_history_task(name: str, counter: Counter, all_msts: list, msts_lock: 
     except Exception as e:
         logger.error(f"Failed history for {name}: {e}")
         counter.inc("errors")
+
+
+def _assert_no_empty_history_cache() -> None:
+    """Raise RuntimeError if any history cache entry is empty or malformed JSON.
+
+    Empty entries allowlisted in known_empty_history.yaml are exempted.
+    Raises with a message listing unallowlisted empty stems and malformed paths.
+    """
+    history_dir = cache.CACHE_DIR / "history"
+    if not history_dir.exists():
+        return
+
+    all_stems = cache.list_cached_history_names()
+    empty_stems: list[str] = []
+    malformed_paths: list[str] = []
+
+    for stem in all_stems:
+        path = history_dir / f"{stem}.json"
+        try:
+            content = json.loads(path.read_text(encoding="utf-8"))
+            if not content:
+                empty_stems.append(stem)
+        except (json.JSONDecodeError, OSError):
+            malformed_paths.append(str(path))
+
+    unallowlisted, expired, _ = filter_and_check(empty_stems, all_stems)
+
+    problems: list[str] = []
+    if unallowlisted:
+        names = [e["stem"] for e in unallowlisted]
+        problems.append(f"Unallowlisted empty ({len(unallowlisted)}): {names}")
+    if expired:
+        names = [e["stem"] for e in expired]
+        problems.append(f"Allowlist expired ({len(expired)}): {names}")
+    if malformed_paths:
+        problems.append(f"Malformed ({len(malformed_paths)}): {malformed_paths}")
+
+    if problems:
+        raise RuntimeError("History cache invariant violated: " + "; ".join(problems))
 
 
 def main():

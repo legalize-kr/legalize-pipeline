@@ -9,7 +9,6 @@ from .config import WORKSPACE_ROOT
 logger = logging.getLogger(__name__)
 
 CHECKPOINT_FILE = WORKSPACE_ROOT / ".checkpoint.json"
-
 _LOCK = threading.Lock()
 
 
@@ -24,14 +23,18 @@ def load() -> dict:
         return {}
 
 
+def _write(data: dict) -> None:
+    data.setdefault("schema_version", 2)
+    CHECKPOINT_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def save(data: dict) -> None:
     """Save checkpoint data."""
     with _LOCK:
-        data.setdefault("schema_version", 2)
-        CHECKPOINT_FILE.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        _write(data)
 
 
 def get_processed_msts() -> set[str]:
@@ -47,11 +50,7 @@ def mark_processed(mst: str) -> None:
         processed = set(data.get("processed_msts", []))
         processed.add(str(mst))
         data["processed_msts"] = sorted(processed)
-        data.setdefault("schema_version", 2)
-        CHECKPOINT_FILE.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        _write(data)
 
 
 def set_last_update(date: str) -> None:
@@ -59,11 +58,7 @@ def set_last_update(date: str) -> None:
     with _LOCK:
         data = load()
         data["last_update"] = date
-        data.setdefault("schema_version", 2)
-        CHECKPOINT_FILE.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        _write(data)
 
 
 def get_last_update() -> str:
