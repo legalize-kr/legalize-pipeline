@@ -130,6 +130,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          gh release delete "$TAG" --repo legalize-kr/legalize-pipeline --cleanup-tag --yes 2>/dev/null || true
           gh release create "$TAG" \
             --repo legalize-kr/legalize-pipeline \
             --title "Cache snapshot $DATE" \
