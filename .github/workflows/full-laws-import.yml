@@ -48,6 +48,11 @@ jobs:
           token: ${{ secrets.REPO_PAT }}
           path: docs-repo
 
+      - name: Link persistent cache
+        run: |
+          mkdir -p /opt/data/legalize-cache
+          ln -sfn /opt/data/legalize-cache workspace/.cache
+
       - name: Setup Python venv
         run: |
           python3 -m venv .venv

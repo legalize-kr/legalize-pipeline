@@ -2,7 +2,7 @@ name: Daily Laws Update
 
 on:
   schedule:
-    - cron: '0 4 * * *' # 13:00 KST (UTC+9)
+    - cron: '0 13 * * *' # 22:00 KST (UTC+9)
   workflow_dispatch:
 
 permissions:
@@ -40,6 +40,11 @@ jobs:
           repository: legalize-kr/legalize-web
           token: ${{ secrets.REPO_PAT }}
           path: docs-repo
+
+      - name: Link persistent cache
+        run: |
+          mkdir -p /opt/data/legalize-cache
+          ln -sfn /opt/data/legalize-cache workspace/.cache
 
       - name: Setup Python venv
         run: |
