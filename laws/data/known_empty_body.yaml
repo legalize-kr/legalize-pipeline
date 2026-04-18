@@ -1,0 +1,27 @@
+# Known-intractable empty-body detail cache entries, keyed by 법령MST.
+#
+# When a cached detail XML parses with no articles and no addenda,
+# laws/converter.py::law_to_markdown raises ValueError("empty_body: ...").
+# Entries listed here are accepted — frontmatter-only Markdown is emitted
+# and the MST is counted as empty_body_accepted in stats.json.
+#
+# Schema per entry (all required):
+#   mst: str              — 법령MST as string
+#   law_name: str         — human-readable 법령명
+#   reason: str           — free-form classification
+#   tracking_issue: str   — "owner/repo#N" (regex ^[^/]+/[^/]+#\d+$)
+#   expires_on: str       — "YYYY-MM-DD" ISO date
+#
+# Loader: laws/empty_body_allowlist.py
+
+entries:
+  - mst: "253527"
+    law_name: "민법"
+    reason: "empty_body_cache"
+    tracking_issue: "legalize-kr/legalize-pipeline#22"
+    expires_on: "2026-10-15"
+    # Audit:
+    #   Cached detail XML for MST 253527 (민법) contains no 조문 and no
+    #   부칙 body. Upstream lawService.do returns an empty body for this
+    #   specific historical snapshot. Verified by issue #22 investigation.
+    #   Keep entry until upstream repairs cache or a reingest path exists.

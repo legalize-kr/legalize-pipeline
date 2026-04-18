@@ -129,6 +129,36 @@ def count_law_commits() -> int:
     return 0
 
 
+def _count_recovery_classifications(failed: dict) -> tuple[int, int]:
+    """Return (empty_history_accepted, empty_body_accepted) from the failures ledger.
+
+    empty_history_accepted = MSTs marked failed with reason starting with
+    'empty_history' that appear in the history allowlist.
+    empty_body_accepted = MSTs listed in the known_empty_body allowlist.
+    """
+    from .empty_body_allowlist import load_allowlist as load_empty_body
+
+    empty_body_allow = load_empty_body()
+    empty_body_accepted = sum(1 for mst in empty_body_allow if mst in failed)
+    empty_history_accepted = sum(
+        1 for v in failed.values() if str(v.get("reason", "")).startswith("empty_history")
+    )
+    return empty_history_accepted, empty_body_accepted
+
+
+def _count_missing_parent_with_child(child_only_dirs: list[str]) -> int:
+    """Directories with 시행령/시행규칙 but no 법률.md at all."""
+    missing = 0
+    for rel in child_only_dirs:
+        law_dir = WORKSPACE_ROOT / rel
+        if not law_dir.exists():
+            continue
+        names = {f.name for f in law_dir.iterdir() if f.is_file()}
+        if "법률.md" not in names:
+            missing += 1
+    return missing
+
+
 def build_stats(metadata: dict) -> dict:
     """Build summary statistics from metadata."""
     from collections import Counter
@@ -139,6 +169,8 @@ def build_stats(metadata: dict) -> dict:
     dirs = classify_directories()
     failed = get_failed_msts()
     misses = get_search_misses()
+    empty_history_accepted, empty_body_accepted = _count_recovery_classifications(failed)
+    missing_parent_with_child = _count_missing_parent_with_child(dirs["child_only_dirs"])
 
     return {
         "total": len(metadata),
@@ -146,9 +178,13 @@ def build_stats(metadata: dict) -> dict:
         "types": dict(type_counts),
         "classifications": {
             "child_only_count": len(dirs["child_only_dirs"]),
+            "child_only_total": len(dirs["child_only_dirs"]),
             "failed_count": len(failed),
             "search_miss_count": len(misses),
             "quarantined_stale_count": len(dirs["quarantined_stale"]),
+            "empty_history_accepted": empty_history_accepted,
+            "empty_body_accepted": empty_body_accepted,
+            "missing_parent_with_child": missing_parent_with_child,
         },
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }

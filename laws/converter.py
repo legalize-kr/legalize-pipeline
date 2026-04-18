@@ -302,6 +302,9 @@ def law_to_markdown(detail: dict) -> str:
     has_articles = bool(articles_md and articles_md.strip())
     has_addenda_body = any((a.get("부칙내용") or "").strip() for a in addenda)
     if not has_articles and not has_addenda_body:
+        from .empty_body_allowlist import is_accepted
+        if is_accepted(metadata.get("법령MST")):
+            return f"---\n{yaml_str}---\n\n# {normalized_name}\n"
         raise ValueError("empty_body: law has neither articles nor addenda content")
 
 

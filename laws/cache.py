@@ -7,6 +7,7 @@ amendment history (lsHistory) in .cache/history/{law_name}.json.
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 
 from .config import WORKSPACE_ROOT
@@ -14,7 +15,7 @@ from core.atomic_io import atomic_write_bytes, atomic_write_text
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = WORKSPACE_ROOT / ".cache"
+CACHE_DIR = Path(os.environ["LEGALIZE_CACHE_DIR"]) if os.environ.get("LEGALIZE_CACHE_DIR") else WORKSPACE_ROOT / ".cache"
 
 # OS filename limit is typically 255 bytes; leave margin for extension
 _MAX_FILENAME_BYTES = 200
