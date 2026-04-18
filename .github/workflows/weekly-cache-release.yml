@@ -2,7 +2,7 @@ name: Weekly Cache Release
 
 on:
   schedule:
-    - cron: '0 18 * * 0' # Sunday 18:00 UTC = Monday 03:00 KST
+    - cron: '0 15 * * 6' # Saturday 15:00 UTC = Sunday 00:00 KST
   workflow_dispatch:
     inputs:
       dry_run:
