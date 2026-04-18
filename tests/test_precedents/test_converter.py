@@ -363,3 +363,44 @@ def test_cap_filename_bytes_preserves_utf8_char_boundary():
     out.encode("utf-8")  # would raise if split mid-codepoint
     assert out.endswith("_999")
     assert len(out.encode("utf-8")) <= conv.MAX_FILENAME_STEM_BYTES
+
+
+# ---------------------------------------------------------------------------
+# html_to_markdown — multi-space collapse and html.unescape
+# ---------------------------------------------------------------------------
+
+def test_html_to_markdown_collapses_3_spaces():
+    assert conv.html_to_markdown("a   b") == "a b"
+
+
+def test_html_to_markdown_collapses_5_spaces_across_lines():
+    assert conv.html_to_markdown("a     b\nc   d") == "a b\nc d"
+
+
+def test_html_to_markdown_leaves_2_spaces_intact():
+    assert conv.html_to_markdown("a  b") == "a  b"
+
+
+def test_html_to_markdown_collapses_3_nbsp():
+    assert conv.html_to_markdown("a\u00A0\u00A0\u00A0b") == "a b"
+
+
+def test_html_to_markdown_collapses_mixed_space_nbsp_run():
+    assert conv.html_to_markdown("a \u00A0 b") == "a b"
+
+
+def test_html_to_markdown_unescapes_amp():
+    assert conv.html_to_markdown("a&amp;b") == "a&b"
+
+
+def test_html_to_markdown_unescapes_nbsp_then_collapses():
+    # &nbsp;&nbsp;&nbsp; → \u00A0\u00A0\u00A0 → collapsed to single space
+    assert conv.html_to_markdown("a&nbsp;&nbsp;&nbsp;b") == "a b"
+
+
+def test_html_to_markdown_unescapes_lt_gt():
+    assert conv.html_to_markdown("&lt;tag&gt;") == "<tag>"
+
+
+def test_html_to_markdown_collapses_korean_with_spaces():
+    assert conv.html_to_markdown("【원고】   홍길동") == "【원고】 홍길동"

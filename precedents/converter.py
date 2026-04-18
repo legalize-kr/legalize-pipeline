@@ -1,5 +1,6 @@
 """Convert precedent XML data to Markdown with YAML frontmatter."""
 
+import html
 import re
 from xml.etree import ElementTree
 
@@ -24,6 +25,7 @@ _REMAINING_PARENS_RE = re.compile(r"\(([^)]+)\)")
 _BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _MULTI_BLANK_RE = re.compile(r"\n{3,}")
+_MULTI_SPACE_RE = re.compile(r"[ \u00A0]{3,}")
 
 # Dangi era → Gregorian offset (CE = Dangi − 2333).
 # Older upstream precedents (e.g. 1956) arrive with 4-digit 단기 years (42890525)
@@ -128,16 +130,35 @@ def cap_filename_bytes(filename: str, serial: str) -> str:
     return f"{truncated}{suffix}"
 
 
-def html_to_markdown(html: str) -> str:
+def normalize_case_name(text: str) -> str:
+    """Inline whitespace normalization for 사건명 (frontmatter + H1 title).
+
+    - Converts <br/> / <br> to a single space (keeps the name single-line)
+    - Strips all other HTML tags
+    - Unescapes HTML entities
+    - Collapses runs of 3+ spaces/NBSPs to a single space
+    """
+    text = _BR_RE.sub(" ", text)
+    text = _HTML_TAG_RE.sub("", text)
+    text = html.unescape(text)
+    text = _MULTI_SPACE_RE.sub(" ", text)
+    return text.strip()
+
+
+def html_to_markdown(text: str) -> str:
     """Convert HTML snippet to plain Markdown text.
 
     - Converts <br/> / <br> to newlines
     - Strips all other HTML tags
+    - Unescapes HTML entities (e.g. &amp; → &, &nbsp; → NBSP)
     - Collapses 3+ consecutive newlines to 2 (max 1 blank line)
+    - Collapses 3+ consecutive spaces/NBSP runs to a single space
     """
-    text = _BR_RE.sub("\n", html)
+    text = _BR_RE.sub("\n", text)
     text = _HTML_TAG_RE.sub("", text)
+    text = html.unescape(text)
     text = _MULTI_BLANK_RE.sub("\n\n", text)
+    text = _MULTI_SPACE_RE.sub(" ", text)
     return text.strip()
 
 
@@ -183,7 +204,7 @@ def precedent_to_markdown(parsed: dict) -> str:
     """Convert a parsed precedent dict to a complete Markdown document."""
     serial = parsed.get("판례정보일련번호", "")
     case_no = parsed.get("사건번호", "")
-    case_name = parsed.get("사건명", "")
+    case_name = normalize_case_name(parsed.get("사건명", ""))
     court_name = normalize_court_name(parsed.get("법원명", ""))
     court_code = parsed.get("법원종류코드", "")
     court_tier = get_court_tier(court_code, court_name)
