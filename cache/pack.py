@@ -146,42 +146,80 @@ def render_markdown(manifest: dict, date_str: str) -> str:
     subdirs = manifest["subdirs"]
     parts = manifest["parts"]
     created_at = manifest["created_at_utc"]
+    date_compact = date_str.replace("-", "")
+    tag = f"cache-{date_compact}"
 
     lines = [
-        f"# Cache Snapshot {date_str}",
+        f"# 캐시 스냅샷 {date_str}",
         "",
-        f"Generated at {created_at}.",
+        f"_전체 데이터를 다운로드하는 데 시간이 제법 걸려 `.cache/` 디렉토리를 압축하여 공유합니다._  ",
+        f"_{date_str} 기준, "
+        + ", ".join(
+            f"{stats['file_count']:,}개 {subdir}"
+            for subdir, stats in subdirs.items()
+            if stats["file_count"] > 0
+        )
+        + f"을 포함합니다. (비압축 {_human_bytes(t['bytes'])}, {t['parts_count']}개 파트)_",
         "",
-        "## Summary",
+        "## 사용 준비",
         "",
-        f"- Total uncompressed size: {_human_bytes(t['bytes'])}",
-        f"- Total file count: {t['file_count']:,}",
-        f"- Compressed parts: {t['parts_count']} parts, {_human_bytes(t['parts_bytes'])}",
+        "### 1. 파트 파일 다운로드",
         "",
-        "## Per-subdirectory counts",
+        "아래 **Release assets** 섹션에서 `" + tag + ".tar.zst.part*` 파일을 모두 받으세요.",
+        "sha256 체크섬으로 무결성을 확인하는 것을 권장합니다.",
         "",
-        "| Subdir | Files | Bytes |",
+        "### 2. 압축 해제",
+        "",
+        "`zstd >= 1.4.4` 및 `--long=27` 옵션(128 MB 디코더 윈도우)이 필요합니다.",
+        "",
+        "```sh",
+        f"# 모든 파트를 한 번에 해제하여 워크스페이스 루트에 풀기",
+        f"cat {tag}.tar.zst.part* | zstd -d --long=27 -T0 | tar -xf -",
+        "# .cache/detail/, .cache/history/, .cache/precedent/, .cache/images/ 가 생성됩니다",
+        "```",
+        "",
+        "> **주의:** 파트 파일 중 하나라도 누락되면 압축 해제가 실패합니다.",
+        "> zstd 롱레인지 디코더는 누락된 청크를 건너뛸 수 없으므로, 실패한 파트를 먼저 재다운로드하세요.",
+        "",
+        "### 3. 캐시를 이용한 작업",
+        "",
+        "```sh",
+        "# 캐시 기반 전체 법령 import (API 호출 없음)",
+        "cd legalize-pipeline",
+        "python -m laws.import_laws --from-cache",
+        "",
+        "# 캐시 기반 전체 판례 변환 (API 호출 없음)",
+        "python -m precedents.import_precedents",
+        "",
+        "# 최신 법령 증분 업데이트 (API 키 필요)",
+        "LAW_OC=your-api-key python -m laws.update --days 7",
+        "```",
+        "",
+        "> [국가법령정보센터 OpenAPI](https://open.law.go.kr)에서 API 키(`LAW_OC`)를 발급받아야 합니다.",
+        "",
+        "## 캐시 구조",
+        "",
+        "```",
+        ".cache/",
+        "  detail/{MST}.xml             # 법령 상세 API 원본 XML",
+        "  history/{법령명}.json         # 법령별 개정 이력",
+        "  precedent/{판례일련번호}.xml  # 판례 상세 API 원본 XML",
+        "  images/                       # 법령 이미지",
+        "```",
+        "",
+        "## 통계",
+        "",
+        "| 디렉토리 | 파일 수 | 크기 |",
         "|---|---:|---:|",
     ]
 
     for subdir, stats in subdirs.items():
         lines.append(
-            f"| {subdir} | {stats['file_count']:,} | {_human_bytes(stats['bytes'])} |"
+            f"| `{subdir}` | {stats['file_count']:,} | {_human_bytes(stats['bytes'])} |"
         )
 
-    # Determine date for the cat command example
-    date_compact = date_str.replace("-", "")
     lines += [
-        "",
-        "## Decompression",
-        "",
-        "Requires `zstd >= 1.4.4` with `--long=27` (128 MB decoder window).",
-        "",
-        "```sh",
-        f"cat cache-{date_compact}.tar.zst.part* | zstd -d --long=27 -T0 | tar -xf -",
-        "```",
-        "",
-        "> ⚠ **Missing parts cannot be skipped.** Re-download any failed part before piping into zstd; the long-range decoder cannot resync past a missing chunk.",
+        f"| **합계** | **{t['file_count']:,}** | **{_human_bytes(t['bytes'])}** |",
         "",
         "## Source commits",
         "",
@@ -197,14 +235,16 @@ def render_markdown(manifest: dict, date_str: str) -> str:
         "",
         "## Release assets",
         "",
+        f"압축 파트 {t['parts_count']}개 + `manifest.json` + `manifest.md`",
+        "",
         "| Filename | Bytes | sha256 |",
         "|---|---:|---|",
     ]
 
     for p in parts:
-        lines.append(f"| {p['filename']} | {p['bytes']:,} | `{p['sha256']}` |")
+        lines.append(f"| `{p['filename']}` | {p['bytes']:,} | `{p['sha256']}` |")
 
-    lines.append("")
+    lines += ["", f"_Generated at {created_at}_", ""]
     return "\n".join(lines)
 
 
