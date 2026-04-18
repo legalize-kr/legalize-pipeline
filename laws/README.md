@@ -123,6 +123,19 @@ WORKSPACE_ROOT/
 
 경로 충돌 판정 기준은 **법령ID**입니다. 같은 법령ID를 가진 법령은 부처명이 달라도(부처 명칭 변경) 항상 같은 파일에 덮어씁니다. 진짜 다른 법령(다른 법령ID)이 같은 구조적 경로를 가질 때만 `시행규칙(총리령).md` 형태 한정자를 사용합니다.
 
+### 정렬 키와 canonical 경로 선택 (compiler와의 동작 일치)
+
+서로 다른 `법령ID`가 같은 structural path를 공유할 때, **먼저 커밋되는 쪽이 canonical(`법률.md`)**이 되고 늦게 오는 쪽이 qualified(`법률(법률).md`)가 됩니다 (first-write-wins in `PathRegistry`). 따라서 ingestion 순서 자체가 canonical 선택의 tiebreaker입니다.
+
+이 파이프라인과 Rust 재구현(`legalize-kr/compiler`)은 동일한 4-튜플 정렬 키를 사용합니다:
+
+1. `공포일자` (문자열 오름차순)
+2. `법령명한글`
+3. `공포번호` (numeric)
+4. `법령MST` (numeric)
+
+공통 헬퍼는 `laws.converter.entry_sort_key`에 있으며, 정렬이 일어나는 모든 호출 지점(`rebuild.py`, `import_laws.py`의 API/cache/CSV 모드, `update.py`)에서 같은 키를 사용합니다. Rust 쪽은 `compiler/src/main.rs`의 `plan_and_diagnose`에 동일 순서가 구현돼 있으며, 한쪽을 바꾸면 양쪽이 갈라져 canonical 파일이 뒤집힙니다.
+
 ### 부처명 변경과 파편화 방지
 
 ```

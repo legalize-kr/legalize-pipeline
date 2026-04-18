@@ -17,7 +17,13 @@ from datetime import datetime, timedelta
 from .api_client import get_law_detail, search_laws
 from .checkpoint import get_last_update, get_processed_msts, mark_processed, set_last_update
 from .config import KR_DIR, LAW_API_KEY
-from .converter import format_date, get_law_path, law_to_markdown, reset_path_registry
+from .converter import (
+    entry_sort_key,
+    format_date,
+    get_law_path,
+    law_to_markdown,
+    reset_path_registry,
+)
 from .git_engine import commit_law
 from .import_laws import build_commit_msg
 
@@ -65,7 +71,12 @@ def update(
     # Filter out already-processed MSTs via checkpoint (in-memory, no git log)
     processed = get_processed_msts()
     new_laws = [law for law in all_laws if law["법령일련번호"] and law["법령일련번호"] not in processed]
-    new_laws.sort(key=lambda x: x.get("공포일자", ""))
+    new_laws.sort(key=lambda x: entry_sort_key(
+        x.get("공포일자", ""),
+        x.get("법령명한글", ""),
+        x.get("공포번호", ""),
+        x.get("법령일련번호", ""),
+    ))
 
     logger.info(f"Found {len(all_laws)} results, {len(new_laws)} new after checkpoint filter")
 

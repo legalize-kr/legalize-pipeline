@@ -50,6 +50,25 @@ def format_date(date_str: str) -> str:
     return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
 
 
+def entry_sort_key(
+    prom_date: str, law_name: str, prom_num: str, mst: str
+) -> tuple[str, str, int, int]:
+    """Canonical ingestion sort key matching ``compiler/src/main.rs``.
+
+    Order: (공포일자, 법령명, 공포번호 as int, MST as int). First-write-wins
+    in ``PathRegistry`` makes this key the canonical-path tiebreaker, so any
+    divergence between Python and Rust produces different canonical files for
+    same-법령ID lineages.
+    """
+    def _as_int(value: str) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    return (prom_date or "", law_name or "", _as_int(prom_num), _as_int(mst))
+
+
 def _to_date(date_str: str) -> datetime.date | str:
     """Convert YYYY-MM-DD string to datetime.date for YAML date scalar output.
 

@@ -21,6 +21,7 @@ from .api_client import get_law_detail, get_law_history, search_laws
 from .checkpoint import get_processed_msts, mark_processed
 from .config import KR_DIR, LAW_API_KEY
 from .converter import (
+    entry_sort_key,
     format_date,
     get_law_path,
     law_to_markdown,
@@ -224,8 +225,13 @@ def import_from_api(
             seen_names.add(name)
             unique_laws.append(law)
 
-    # Sort by promulgation date (oldest first)
-    unique_laws.sort(key=lambda x: x.get("공포일자", ""))
+    # Sort by (공포일자, 법령명, 공포번호, MST) to match compiler canonical ordering.
+    unique_laws.sort(key=lambda x: entry_sort_key(
+        x.get("공포일자", ""),
+        x.get("법령명한글", ""),
+        x.get("공포번호", ""),
+        x.get("법령일련번호", ""),
+    ))
 
     if limit:
         unique_laws = unique_laws[:limit]
@@ -309,8 +315,13 @@ def import_from_cache(
             mark_failed(mst=str(mst), reason=classify(e), detail=str(e),
                         step="import_from_cache.parse", law_name="")
 
-    # Sort by promulgation date (oldest first)
-    entries.sort(key=lambda x: x[1]["metadata"].get("공포일자", ""))
+    # Sort by (공포일자, 법령명, 공포번호, MST) to match compiler canonical ordering.
+    entries.sort(key=lambda x: entry_sort_key(
+        x[1]["metadata"].get("공포일자", ""),
+        x[1]["metadata"].get("법령명한글", ""),
+        x[1]["metadata"].get("공포번호", ""),
+        x[0],
+    ))
 
     if limit:
         entries = entries[:limit]
@@ -462,7 +473,12 @@ def import_from_csv(
 
     processed = get_processed_msts()
     laws = [l for l in laws if l["법령MST"] not in processed]
-    laws.sort(key=lambda x: x.get("공포일자", ""))
+    laws.sort(key=lambda x: entry_sort_key(
+        x.get("공포일자", ""),
+        x.get("법령명", ""),
+        x.get("공포번호", ""),
+        x.get("법령MST", ""),
+    ))
 
     if limit:
         laws = laws[:limit]

@@ -15,6 +15,7 @@ from . import cache
 from .api_client import get_law_detail
 from .config import BOT_AUTHOR, WORKSPACE_ROOT
 from .converter import (
+    entry_sort_key,
     format_date,
     get_law_path,
     law_to_markdown,
@@ -121,9 +122,15 @@ def load_and_sort_entries() -> list[tuple[str, dict]]:
     if errors:
         logger.warning(f"{errors} entries failed to parse")
 
-    # Sort by promulgation date (oldest first)
-    entries.sort(key=lambda x: x[1]["metadata"].get("공포일자", ""))
-    logger.info(f"Sorted {len(entries)} entries by date")
+    # Sort by (공포일자, 법령명, 공포번호, MST) to match compiler/src/main.rs.
+    # First-write-wins in PathRegistry uses this key to pick canonical paths.
+    entries.sort(key=lambda x: entry_sort_key(
+        x[1]["metadata"].get("공포일자", ""),
+        x[1]["metadata"].get("법령명한글", ""),
+        x[1]["metadata"].get("공포번호", ""),
+        x[0],
+    ))
+    logger.info(f"Sorted {len(entries)} entries by (date, name, prom_num, mst)")
     return entries
 
 
