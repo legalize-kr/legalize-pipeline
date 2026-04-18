@@ -1,0 +1,116 @@
+name: Daily Cache Refresh
+
+on:
+  schedule:
+    - cron: '0 10 * * *' # 19:00 KST (UTC+9)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workspace-cache
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: self-hosted
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout law repo
+        uses: actions/checkout@v4
+        with:
+          repository: legalize-kr/legalize-kr
+          token: ${{ secrets.REPO_PAT }}
+          fetch-depth: 0
+          path: workspace
+
+      - name: Clean previous pipeline checkout
+        run: rm -rf workspace/pipeline
+
+      - name: Checkout pipeline
+        uses: actions/checkout@v4
+        with:
+          path: workspace/pipeline
+
+      - name: Setup Python venv
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install -r workspace/pipeline/requirements.txt
+
+      - name: Disk preflight
+        run: |
+          avail=$(df --output=avail -B1 . | tail -1)
+          if [ "$avail" -lt 60000000000 ]; then
+            echo "::error::Insufficient disk: need ≥60GB, have $((avail/1024/1024/1024))GB"
+            exit 1
+          fi
+
+      - name: Fetch laws cache
+        working-directory: workspace/pipeline
+        env:
+          LAW_OC: ${{ secrets.LAW_OC }}
+          WORKSPACE_ROOT: ${{ github.workspace }}/workspace
+        run: |
+          . ../../.venv/bin/activate
+          python -m laws.fetch_cache
+
+      - name: Fetch precedents cache
+        working-directory: workspace/pipeline
+        env:
+          LAW_OC: ${{ secrets.LAW_OC }}
+          WORKSPACE_ROOT: ${{ github.workspace }}/workspace
+        run: |
+          . ../../.venv/bin/activate
+          python -m precedents.fetch_cache
+
+      - name: Cache size summary
+        working-directory: workspace/pipeline
+        run: du -sh ../.cache/* | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Download previous baseline artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cache-baseline
+        continue-on-error: true
+
+      - name: File-count regression gate
+        run: |
+          # Note: legitimate count drops can come from law repeals (detail/), _no_result_ids.txt pruning (precedent/), or upstream cache invalidation. 1% tolerance band absorbs these.
+          pass=true
+          for subdir in detail history precedent images; do
+            new=$(find workspace/.cache/$subdir -type f 2>/dev/null | wc -l)
+            echo "Cache $subdir: $new files"
+            if [ -f cache-baseline.json ]; then
+              baseline=$(python3 -c "import json,sys; d=json.load(open('cache-baseline.json')); print(d.get('$subdir', 0))")
+              threshold=$(python3 -c "print(int($baseline * 0.99))")
+              if [ "$new" -lt "$threshold" ]; then
+                echo "::error::Cache regression in $subdir: $new < threshold $threshold (baseline $baseline)"
+                pass=false
+              elif [ "$new" -lt "$baseline" ]; then
+                echo "::warning::Cache count dropped in $subdir: $new < baseline $baseline (within 1% tolerance)"
+              fi
+            fi
+          done
+          python3 - <<'PYTHON_EOF'
+          import json, subprocess, pathlib
+          counts = {}
+          for subdir in ["detail", "history", "precedent", "images"]:
+              result = subprocess.run(
+                  ["find", f"workspace/.cache/{subdir}", "-type", "f"],
+                  capture_output=True, text=True
+              )
+              counts[subdir] = len([l for l in result.stdout.splitlines() if l])
+          pathlib.Path("cache-baseline.json").write_text(json.dumps(counts, indent=2))
+          print("Wrote cache-baseline.json:", counts)
+          PYTHON_EOF
+          $pass || exit 1
+
+      - name: Upload baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-baseline
+          path: cache-baseline.json
+          retention-days: 400

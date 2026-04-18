@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: precedents-update
+  group: workspace-cache
   cancel-in-progress: false
 
 jobs:

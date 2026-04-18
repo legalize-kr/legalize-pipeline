@@ -1,0 +1,159 @@
+name: Weekly Cache Release
+
+on:
+  schedule:
+    - cron: '0 18 * * 0' # Sunday 18:00 UTC = Monday 03:00 KST
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (skip release create/upload/prune)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cache-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: self-hosted
+    timeout-minutes: 480
+
+    steps:
+      - name: Checkout law repo
+        uses: actions/checkout@v4
+        with:
+          repository: legalize-kr/legalize-kr
+          token: ${{ secrets.REPO_PAT }}
+          fetch-depth: 0
+          path: workspace
+
+      - name: Clean previous pipeline checkout
+        run: rm -rf workspace/pipeline
+
+      - name: Checkout pipeline
+        uses: actions/checkout@v4
+        with:
+          path: workspace/pipeline
+
+      - name: Setup Python venv
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install -r workspace/pipeline/requirements.txt
+
+      - name: Assert zstd version
+        run: |
+          ver=$(zstd --version | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 | tr -d v)
+          req=1.4.4
+          printf '%s\n%s\n' "$ver" "$req" | sort -V | head -1 | grep -q "^$req$" || {
+            echo "::error::zstd ≥ $req required (found $ver). Install via 'apt-get install zstd' or 'brew install zstd'."
+            exit 1
+          }
+
+      - name: Disk preflight
+        run: |
+          avail=$(df --output=avail -B1 . | tail -1)
+          if [ "$avail" -lt 60000000000 ]; then
+            echo "::error::Insufficient disk: need ≥60GB, have $((avail/1024/1024/1024))GB"
+            exit 1
+          fi
+
+      - name: Capture date and tag
+        run: |
+          DATE=$(date -u +%Y%m%d)
+          TAG=cache-$DATE
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "DATE=$DATE" >> $GITHUB_ENV
+
+      - name: Create staging dir
+        run: mkdir -p staging
+
+      - name: Build archive with split
+        run: |
+          cd workspace
+          tar --use-compress-program="zstd -22 --long=27 -T0" -cf - -C .cache detail history precedent images \
+            | split -b 1900M -d -a 3 - "$GITHUB_WORKSPACE/staging/${TAG}.tar.zst.part"
+
+      - name: Generate manifest
+        working-directory: workspace/pipeline
+        run: |
+          . ../../.venv/bin/activate
+          python -m cache.pack \
+            --staging "$GITHUB_WORKSPACE/staging" \
+            --cache-root "$GITHUB_WORKSPACE/workspace/.cache" \
+            --manifest "$GITHUB_WORKSPACE/staging/manifest.json" \
+            --markdown "$GITHUB_WORKSPACE/staging/manifest.md"
+
+      - name: Asset size assertion
+        run: |
+          for part in "$GITHUB_WORKSPACE/staging/${TAG}.tar.zst.part"*; do
+            size=$(stat -c %s "$part")
+            if [ "$size" -gt 2000000000 ]; then
+              echo "::error::Part $part exceeds 2GB limit: $size bytes"
+              exit 1
+            fi
+            echo "OK: $(basename "$part") = $size bytes"
+          done
+
+      - name: Multi-part round-trip test
+        run: |
+          parts=("$GITHUB_WORKSPACE/staging/${TAG}.tar.zst.part"*)
+          if [ "${#parts[@]}" -ge 2 ]; then
+            mkdir -p /tmp/roundtrip && cd /tmp/roundtrip
+            cat "$GITHUB_WORKSPACE/staging/${TAG}.tar.zst.part000" "$GITHUB_WORKSPACE/staging/${TAG}.tar.zst.part001" \
+              | zstd -d --long=27 -T0 2>/dev/null | tar -tf - | head -50 > listing.txt || true
+            [ -s listing.txt ] || { echo "::error::round-trip extraction produced empty listing"; exit 1; }
+            echo "Round-trip OK: $(wc -l < listing.txt) entries listed"
+          else
+            echo "Single part — skipping multi-part round-trip test"
+          fi
+
+      - name: Dry-run guard
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "DRY RUN: skipping release create/upload/prune"
+            ls -la "$GITHUB_WORKSPACE/staging/"
+            exit 0
+          fi
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$TAG" \
+            --title "Cache snapshot $DATE" \
+            --notes-file "$GITHUB_WORKSPACE/staging/manifest.md"
+
+      - name: Upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for i in 1 2 3; do
+            if gh release upload "$TAG" \
+              "$GITHUB_WORKSPACE"/staging/${TAG}.tar.zst.part* \
+              "$GITHUB_WORKSPACE/staging/manifest.json" \
+              "$GITHUB_WORKSPACE/staging/manifest.md" \
+              --clobber; then
+              break
+            fi
+            echo "::warning::upload attempt $i failed, retrying in 30s"
+            sleep 30
+            [ "$i" = "3" ] && exit 1
+          done
+
+      - name: Prune old releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release list --json tagName,createdAt -L 100 \
+            --jq '.[] | select(.tagName | startswith("cache-")) | .tagName' \
+            | sort -r | tail -n +5 \
+            | xargs -I{} gh release delete {} --cleanup-tag --yes || true
+
+      - name: Cleanup staging
+        if: always()
+        run: rm -rf "$GITHUB_WORKSPACE/staging" /tmp/roundtrip || true

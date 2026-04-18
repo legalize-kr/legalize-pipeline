@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: laws-update
+  group: workspace-cache
   cancel-in-progress: false
 
 jobs:
