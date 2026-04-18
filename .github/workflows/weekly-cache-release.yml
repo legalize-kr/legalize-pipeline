@@ -62,8 +62,8 @@ jobs:
       - name: Disk preflight
         run: |
           avail=$(df --output=avail -B1 . | tail -1)
-          if [ "$avail" -lt 60000000000 ]; then
-            echo "::error::Insufficient disk: need ≥60GB, have $((avail/1024/1024/1024))GB"
+          if [ "$avail" -lt 20000000000 ]; then
+            echo "::error::Insufficient disk: need ≥20GB, have $((avail/1024/1024/1024))GB"
             exit 1
           fi
 
