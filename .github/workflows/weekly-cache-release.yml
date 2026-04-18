@@ -126,19 +126,23 @@ jobs:
           fi
 
       - name: Create release
+        if: ${{ inputs.dry_run != true }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$TAG" \
+            --repo legalize-kr/legalize-pipeline \
             --title "Cache snapshot $DATE" \
             --notes-file "$GITHUB_WORKSPACE/staging/manifest.md"
 
       - name: Upload assets
+        if: ${{ inputs.dry_run != true }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           for i in 1 2 3; do
             if gh release upload "$TAG" \
+              --repo legalize-kr/legalize-pipeline \
               "$GITHUB_WORKSPACE"/staging/${TAG}.tar.zst.part* \
               "$GITHUB_WORKSPACE/staging/manifest.json" \
               "$GITHUB_WORKSPACE/staging/manifest.md" \
@@ -151,13 +155,16 @@ jobs:
           done
 
       - name: Prune old releases
+        if: ${{ inputs.dry_run != true }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release list --json tagName,createdAt -L 100 \
+          gh release list --repo legalize-kr/legalize-pipeline \
+            --json tagName,createdAt -L 100 \
             --jq '.[] | select(.tagName | startswith("cache-")) | .tagName' \
             | sort -r | tail -n +5 \
-            | xargs -I{} gh release delete {} --cleanup-tag --yes || true
+            | xargs -I{} gh release delete {} --repo legalize-kr/legalize-pipeline \
+              --cleanup-tag --yes || true
 
       - name: Cleanup staging
         if: always()
