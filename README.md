@@ -2,7 +2,7 @@
 
 한국 법령 및 판례 데이터를 수집·변환·검증하는 파이프라인입니다.
 
-> 이 저장소는 [`legalize-kr/legalize-kr`](https://github.com/legalize-kr/legalize-kr)(법령 데이터)과 [`legalize-kr/legalize-web`](https://github.com/legalize-kr/legalize-web)(웹사이트)과 함께 사용됩니다.
+> 이 저장소는 [`legalize-kr/legalize-kr`](https://github.com/legalize-kr/legalize-kr)(법령 데이터), [`legalize-kr/precedent-kr`](https://github.com/legalize-kr/precedent-kr)(판례 데이터), [`legalize-kr/legalize-web`](https://github.com/legalize-kr/legalize-web)(웹사이트), [`legalize-kr/compiler`](https://github.com/legalize-kr/compiler)(법령 컴파일러, Rust)와 함께 사용됩니다.
 
 ## 패키지 구조
 

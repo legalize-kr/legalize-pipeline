@@ -14,7 +14,7 @@
 | `legalize-kr/legalize-kr` | 법령 데이터 (`kr/{법령명}/*.md`, `metadata.json`) |
 | `legalize-kr/legalize-pipeline` | 수집·변환·검증 파이프라인 (이 저장소) |
 | `legalize-kr/legalize-web` | 웹사이트 (`legalize.kr`, GitHub Pages) |
-| `legalize-kr/compiler` | rebuild용 네이티브 컴파일러 (선택) |
+| `legalize-kr/compiler` | rebuild용 네이티브 컴파일러 (Rust). `full-laws-import.yml`이 릴리즈 바이너리가 있으면 `laws.rebuild`보다 먼저 사용하고, 없을 때만 Python `rebuild.py`로 폴백 |
 | `legalize-kr/precedent-kr` | 판례 데이터 (`{사건종류}/{법원등급}/{사건번호}.md`, `metadata.json`) |
 
 ## Directory Structure
