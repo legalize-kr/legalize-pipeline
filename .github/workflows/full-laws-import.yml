@@ -111,7 +111,16 @@ jobs:
           . ../../.venv/bin/activate
           if [ "${{ steps.compiler.outputs.available }}" = "true" ]; then
             echo "Running compiler..."
-            /tmp/legalize-compiler --cache ../.cache --output ..
+            # 컴파일러는 bare repo를 새로 만든다 (<cache_dir> -o <output.git>).
+            # 매 실행마다 깨끗한 출력을 위해 먼저 제거한다.
+            rm -rf /tmp/rebuilt.git
+            /tmp/legalize-compiler ../.cache -o /tmp/rebuilt.git
+            # 재구성된 bare repo의 main을 workspace 체크아웃에 반영해
+            # 이후 "Force push" 단계가 재구성 히스토리를 origin에 올리도록 한다.
+            # (컴파일러 출력은 bare이므로 working tree에 직접 쓸 수 없고,
+            #  workspace는 non-bare이므로 fetch + reset --hard 로 통합)
+            echo "Integrating rebuilt bare repo into workspace..."
+            ( cd .. && git fetch /tmp/rebuilt.git main && git reset --hard FETCH_HEAD )
           else
             echo "Running rebuild..."
             python -m laws.rebuild --branch rebuild
