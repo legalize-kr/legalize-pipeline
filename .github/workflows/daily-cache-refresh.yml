@@ -60,7 +60,11 @@ jobs:
           WORKSPACE_ROOT: ${{ github.workspace }}/workspace
         run: |
           . ../../.venv/bin/activate
-          python -m laws.fetch_cache
+          # --refresh-history: lsHistory 캐시를 우회하고 재조회해
+          # 타법개정 등 lawSearch.do가 반환하지 않는 MST까지 포괄 수집
+          # (issue #31 재발 방지). 추가 API 호출은 법령명 수만큼이며,
+          # 기본 240분 타임아웃 내에 여유롭게 끝남.
+          python -m laws.fetch_cache --refresh-history
 
       - name: Fetch precedents cache
         working-directory: workspace/pipeline
