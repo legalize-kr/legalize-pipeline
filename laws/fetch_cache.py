@@ -122,15 +122,21 @@ def _fetch_detail_task(mst: str, name: str, counter: Counter) -> None:
         counter.inc("errors")
 
 
-def _fetch_history_task(name: str, counter: Counter, all_msts: list, msts_lock: threading.Lock) -> None:
+def _fetch_history_task(
+    name: str,
+    counter: Counter,
+    all_msts: list,
+    msts_lock: threading.Lock,
+    refresh: bool = False,
+) -> None:
     """Fetch history for a single law name."""
     try:
         already_cached = bool(cache.get_history(name))
-        entries = get_law_history(name)
+        entries = get_law_history(name, refresh=refresh)
         new_msts = [e.get("법령일련번호", "") for e in entries if e.get("법령일련번호")]
         with msts_lock:
             all_msts.extend(new_msts)
-        if already_cached:
+        if already_cached and not refresh:
             counter.inc("cached")
         else:
             counter.inc("fetched")
@@ -197,6 +203,15 @@ def main():
         "--skip-history",
         action="store_true",
         help="Skip history fetching; only cache current detail (old behavior)",
+    )
+    parser.add_argument(
+        "--refresh-history",
+        action="store_true",
+        help=(
+            "Bypass local history cache and refetch from lsHistory. Use when the "
+            "upstream may have new entries (e.g. 타법개정) that the cached history "
+            "list does not reflect."
+        ),
     )
     parser.add_argument(
         "--workers",
@@ -280,7 +295,14 @@ def main():
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_fetch_history_task, name, history_counter, all_msts, msts_lock): name
+            pool.submit(
+                _fetch_history_task,
+                name,
+                history_counter,
+                all_msts,
+                msts_lock,
+                args.refresh_history,
+            ): name
             for name in unique_names
         }
         for future in as_completed(futures):

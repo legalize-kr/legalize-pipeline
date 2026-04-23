@@ -14,7 +14,7 @@ import argparse
 import logging
 from datetime import datetime, timedelta
 
-from .api_client import get_law_detail, search_laws
+from .api_client import get_law_detail, get_law_history, search_laws
 from .checkpoint import get_last_update, get_processed_msts, mark_processed, set_last_update
 from .config import KR_DIR, LAW_API_KEY
 from .converter import (
@@ -35,6 +35,7 @@ def update(
     law_type_filter: str | None = None,
     dry_run: bool = False,
     max_pages: int = 50,
+    augment_history: bool = True,
 ) -> int:
     """Query API for recently amended laws and import their latest versions."""
     if not LAW_API_KEY:
@@ -67,6 +68,44 @@ def update(
                 f"raise --max-pages explicitly if this is intentional."
             )
         page += 1
+
+    # lsHistory augmentation: lawSearch.do omits 타법개정 MSTs (whose 제개정구분 is
+    # empty on the server), so for each law surfaced by the search, refresh its
+    # amendment history from lsHistory and pick up any sibling MSTs that fall in
+    # the [since, today] window. Without this, 타법개정 공포분은 영원히 누락된다.
+    if augment_history:
+        seen_msts = {law.get("법령일련번호", "") for law in all_laws}
+        unique_names = {law.get("법령명한글", "") for law in all_laws if law.get("법령명한글")}
+        added = 0
+        history_errors = 0
+        for name in sorted(unique_names):
+            try:
+                history = get_law_history(name, refresh=True)
+            except Exception as e:
+                logger.warning(f"lsHistory refresh failed for {name}: {e}")
+                history_errors += 1
+                continue
+            for entry in history:
+                mst = entry.get("법령일련번호", "")
+                prom = entry.get("공포일자", "")
+                if not mst or mst in seen_msts:
+                    continue
+                if not (since <= prom <= today):
+                    continue
+                all_laws.append({
+                    "법령일련번호": mst,
+                    "법령명한글": entry.get("법령명한글", ""),
+                    "제개정구분명": entry.get("제개정구분명", ""),
+                    "공포일자": prom,
+                    "공포번호": entry.get("공포번호", ""),
+                    "시행일자": entry.get("시행일자", ""),
+                })
+                seen_msts.add(mst)
+                added += 1
+        logger.info(
+            f"lsHistory augmentation: +{added} MSTs from {len(unique_names)} laws "
+            f"(errors={history_errors})"
+        )
 
     # Filter out already-processed MSTs via checkpoint (in-memory, no git log)
     processed = get_processed_msts()
@@ -170,6 +209,14 @@ def main():
             "Raise for backfill (e.g. --days 3650 --max-pages 500)."
         ),
     )
+    parser.add_argument(
+        "--no-augment-history",
+        action="store_true",
+        help=(
+            "Disable the lsHistory augmentation pass that catches 타법개정 MSTs "
+            "missed by lawSearch.do. Only use when troubleshooting — default on."
+        ),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -179,6 +226,7 @@ def main():
         law_type_filter=args.law_type,
         dry_run=args.dry_run,
         max_pages=args.max_pages,
+        augment_history=not args.no_augment_history,
     )
 
     if not args.dry_run:

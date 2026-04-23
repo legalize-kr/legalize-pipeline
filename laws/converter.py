@@ -233,6 +233,7 @@ def articles_to_markdown(articles: list[dict]) -> str:
     lines = []
     for article in articles:
         number = article.get("조문번호", "")
+        branch_number = article.get("조문가지번호", "")
         title = article.get("조문제목", "")
         content = (article.get("조문내용") or "").strip().translate(_DOT_NORMALIZE)
 
@@ -245,6 +246,8 @@ def articles_to_markdown(articles: list[dict]) -> str:
             continue
 
         heading = f"##### 제{number}조"
+        if branch_number:
+            heading += f"의{branch_number}"
         if title:
             heading += f" ({title})"
         lines.append(heading)

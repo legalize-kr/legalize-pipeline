@@ -130,6 +130,7 @@ def get_law_detail(mst_id: str | int) -> dict:
     for jo in root.findall(".//조문단위"):
         article = {
             "조문번호": jo.findtext("조문번호", ""),
+            "조문가지번호": jo.findtext("조문가지번호", ""),
             "조문제목": jo.findtext("조문제목", ""),
             "조문내용": jo.findtext("조문내용", ""),
         }
@@ -194,23 +195,28 @@ def _parse_dot_date(raw: str) -> str:
     return raw.replace(".", "")
 
 
-def get_law_history(law_name: str) -> list[dict]:
+def get_law_history(law_name: str, refresh: bool = False) -> list[dict]:
     """Fetch amendment history for a law via lsHistory HTML endpoint.
 
     Args:
         law_name: Exact law name (e.g., "민법")
+        refresh: If True, bypass the local history cache and refetch from the API.
+            The cache is then rewritten with the fresh result. Use this when the
+            upstream may have added new entries (e.g., 타법개정) that the locally
+            cached history list does not reflect.
 
     Returns list of dicts sorted oldest-first, each with:
     법령일련번호, 법령명한글, 제개정구분명, 법령구분, 공포번호, 공포일자, 시행일자
     """
     import re
 
-    cached = cache.get_history(law_name)
-    if cached:
-        logger.debug(f"Cache hit: history law_name={law_name}")
-        return cached
-    if cached == []:
-        logging.info("rewriting poisoned empty cache for %s", law_name)
+    if not refresh:
+        cached = cache.get_history(law_name)
+        if cached:
+            logger.debug(f"Cache hit: history law_name={law_name}")
+            return cached
+        if cached == []:
+            logging.info("rewriting poisoned empty cache for %s", law_name)
 
     all_entries: list[dict] = []
     page = 1
