@@ -124,14 +124,29 @@ def get_search_misses() -> dict[str, dict]:
 
 
 def log_failure(step: str, mst: str, law_name: str, exc: BaseException) -> None:
-    """Emit a structured error log record for an import failure."""
+    """Emit a structured error log record for an import failure.
+
+    Two-channel design: diagnostic fields are attached as ``extra={...}`` (for
+    structured handlers and the test suite, which asserts on
+    ``record.step``/``record.exc_type``/etc.) AND inlined into the rendered
+    message (so the default root-logger format
+    ``%(asctime)s %(levelname)s %(message)s`` still surfaces them on the
+    console — otherwise every failure collapses to a bare "import_failure"
+    line with no way to triage).
+    """
+    exc_type = type(exc).__name__
+    exc_msg = str(exc)[:500]
     logger.error(
-        "import_failure",
+        "import_failure step=%s mst=%s law_name=%r exc_type=%s exc_msg=%s",
+        step,
+        mst,
+        law_name,
+        exc_type,
+        exc_msg,
         extra={
             "step": step,
             "mst": mst,
-            "법령명": law_name,
-            "exc_type": type(exc).__name__,
-            "exc_msg": str(exc)[:500],
+            "exc_type": exc_type,
+            "exc_msg": exc_msg,
         },
     )

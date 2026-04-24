@@ -12,7 +12,16 @@ from unittest.mock import patch
 
 import pytest
 
+import laws.cache as law_cache
 import laws.update as update_mod
+
+
+@pytest.fixture(autouse=True)
+def _isolate_cache(tmp_path, monkeypatch):
+    """Prevent these tests from writing fixture law names (법0..법49, etc.)
+    into the shared .cache/history/ directory, where they would poison
+    fetch_cache's empty-history invariant on the developer's machine."""
+    monkeypatch.setattr(law_cache, "CACHE_DIR", tmp_path / ".cache")
 
 
 # ---------------------------------------------------------------------------
@@ -38,6 +47,7 @@ def _run_update(search_stub, max_pages=50, **kwargs):
     """Call update.update() with all side-effect stubs patched in."""
     with (
         patch.object(update_mod, "search_laws", search_stub),
+        patch.object(update_mod, "get_law_history", return_value=[]),
         patch.object(update_mod, "get_last_update", return_value=None),
         patch.object(update_mod, "get_processed_msts", return_value=set()),
         patch.object(update_mod, "mark_processed", return_value=None),

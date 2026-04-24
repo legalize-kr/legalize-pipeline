@@ -135,7 +135,7 @@ def test_caplog_emits_stable_keys_on_failure(tmp_path, monkeypatch, caplog):
     with caplog.at_level(logging.ERROR, logger="laws.failures"):
         il.import_from_cache(dry_run=False)
 
-    failure_records = [r for r in caplog.records if r.getMessage() == "import_failure"]
+    failure_records = [r for r in caplog.records if r.getMessage().startswith("import_failure")]
     assert failure_records, "Expected at least one 'import_failure' log record"
     rec = failure_records[0]
     assert hasattr(rec, "step")

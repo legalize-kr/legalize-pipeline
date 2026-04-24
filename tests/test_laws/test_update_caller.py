@@ -11,6 +11,7 @@ def test_empty_body_in_update_quarantines_existing_markdown(tmp_path, monkeypatc
     import laws.failures as failures
     import laws.converter as conv
     import laws.checkpoint as checkpoint_mod
+    import laws.cache as law_cache
 
     # Point workspace roots
     kr_dir = tmp_path / "kr"
@@ -18,6 +19,10 @@ def test_empty_body_in_update_quarantines_existing_markdown(tmp_path, monkeypatc
     monkeypatch.setattr(update_mod, "KR_DIR", kr_dir)
     monkeypatch.setattr(conv, "KR_DIR", kr_dir, raising=False)
     monkeypatch.setattr(failures, "FAILED_FILE", tmp_path / ".failed_msts.json")
+    # Prevent the augment_history path from writing `foo법.json` (empty) into
+    # the shared .cache/history/ on disk and also from hitting the real API.
+    monkeypatch.setattr(law_cache, "CACHE_DIR", tmp_path / ".cache")
+    monkeypatch.setattr(update_mod, "get_law_history", lambda name, refresh=False: [])
 
     # Seed existing stale markdown file
     law_dir = kr_dir / "foo법"
