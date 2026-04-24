@@ -262,6 +262,9 @@ def articles_to_markdown(articles: list[dict]) -> str:
 
         for para in article.get("항", []):
             para_num = para.get("항번호", "")
+            para_branch = para.get("항가지번호", "")
+            if para_num and para_branch:
+                para_num = f"{para_num}의{para_branch}"
             para_content = para.get("항내용", "").translate(_DOT_NORMALIZE)
             if para_content:
                 # Strip leading ①②… — already shown as bold prefix
@@ -272,6 +275,9 @@ def articles_to_markdown(articles: list[dict]) -> str:
 
             for subpara in para.get("호", []):
                 sub_num = subpara.get("호번호", "").strip().rstrip(".")
+                sub_branch = subpara.get("호가지번호", "").strip()
+                if sub_num and sub_branch:
+                    sub_num = f"{sub_num}의{sub_branch}"
                 sub_content = subpara.get("호내용", "").translate(_DOT_NORMALIZE)
                 if sub_content:
                     stripped = _HO_PREFIX_RE.sub("", sub_content.strip())
@@ -283,6 +289,9 @@ def articles_to_markdown(articles: list[dict]) -> str:
 
                 for item in subpara.get("목", []):
                     item_num = item.get("목번호", "").strip().rstrip(".")
+                    item_branch = item.get("목가지번호", "").strip()
+                    if item_num and item_branch:
+                        item_num = f"{item_num}의{item_branch}"
                     item_content = item.get("목내용", "").translate(_DOT_NORMALIZE)
                     if item_content:
                         stripped = _MOK_PREFIX_RE.sub("", item_content.strip())

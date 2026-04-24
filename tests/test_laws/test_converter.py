@@ -339,6 +339,78 @@ def test_paragraph_with_ho_and_mok():
     assert "목 내용" in md
 
 
+def test_branch_numbers_render_for_jo_hang_ho_mok():
+    """Regression for legalize-pipeline#2: 조/항/호/목 가지번호를 `의N` 접미사로 렌더링."""
+    articles = [
+        {
+            "조문번호": "4",
+            "조문가지번호": "2",
+            "조문제목": "가지조",
+            "조문내용": "제4조의2 (가지조) 본문",
+            "항": [
+                {
+                    "항번호": "①",
+                    "항가지번호": "3",
+                    "항내용": "①가지항",
+                    "호": [
+                        {
+                            "호번호": "1.",
+                            "호가지번호": "2",
+                            "호내용": "1의2. 가지호",
+                            "목": [
+                                {
+                                    "목번호": "가.",
+                                    "목가지번호": "4",
+                                    "목내용": "가의4. 가지목",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
+    md = articles_to_markdown(articles)
+    assert "##### 제4조의2 (가지조)" in md
+    assert "**①의3**" in md
+    assert "  1의2\\. 가지호" in md
+    assert "    가의4\\. 가지목" in md
+
+
+def test_branch_numbers_absent_preserves_plain_format():
+    """가지번호가 없을 때는 `의N` 접미사를 붙이지 않는다 (회귀 방지)."""
+    articles = [
+        {
+            "조문번호": "1",
+            "조문가지번호": "",
+            "조문제목": "",
+            "조문내용": "",
+            "항": [
+                {
+                    "항번호": "1",
+                    "항가지번호": "",
+                    "항내용": "①본문",
+                    "호": [
+                        {
+                            "호번호": "1.",
+                            "호가지번호": "",
+                            "호내용": "1. 호",
+                            "목": [
+                                {"목번호": "가.", "목가지번호": "", "목내용": "가. 목"}
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
+    md = articles_to_markdown(articles)
+    assert "**1**" in md
+    assert "**1의" not in md
+    assert "  1\\. 호" in md
+    assert "    가\\. 목" in md
+
+
 def test_unicode_dot_normalization_in_articles():
     """Dots in article content are normalized to U+318D."""
     articles = [

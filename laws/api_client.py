@@ -139,6 +139,7 @@ def get_law_detail(mst_id: str | int) -> dict:
         for hang in jo.findall(".//항"):
             para = {
                 "항번호": hang.findtext("항번호", ""),
+                "항가지번호": hang.findtext("항가지번호", ""),
                 "항내용": hang.findtext("항내용", ""),
             }
             # Parse 호 (subparagraphs)
@@ -146,6 +147,7 @@ def get_law_detail(mst_id: str | int) -> dict:
             for ho in hang.findall(".//호"):
                 subpara = {
                     "호번호": ho.findtext("호번호", ""),
+                    "호가지번호": ho.findtext("호가지번호", ""),
                     "호내용": ho.findtext("호내용", ""),
                 }
                 # Parse 목 (items)
@@ -153,6 +155,7 @@ def get_law_detail(mst_id: str | int) -> dict:
                 for mok in ho.findall(".//목"):
                     items.append({
                         "목번호": mok.findtext("목번호", ""),
+                        "목가지번호": mok.findtext("목가지번호", ""),
                         "목내용": mok.findtext("목내용", ""),
                     })
                 subpara["목"] = items
