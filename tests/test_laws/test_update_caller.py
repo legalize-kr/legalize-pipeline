@@ -5,6 +5,65 @@ import json
 import pytest
 
 
+def test_find_existing_path_for_law_id(tmp_path, monkeypatch):
+    """Existing on-disk file with matching 법령ID is reused as the write path.
+
+    Regression: update.py runs with a fresh PathRegistry and would otherwise
+    pick a different canonical path than the previously written file when
+    the 법령구분 changes (e.g. 기획재정부령 → 재정경제부령) or when an
+    earlier rebuild qualified the path due to a collision (법률(법률).md).
+    Reusing the existing path prevents orphan files that crash
+    laws.validate.
+    """
+    import laws.update as update_mod
+    import laws.converter as conv
+
+    kr_dir = tmp_path / "kr"
+    kr_dir.mkdir()
+    monkeypatch.setattr(update_mod, "KR_DIR", kr_dir)
+    monkeypatch.setattr(conv, "KR_DIR", kr_dir, raising=False)
+
+    # Old-ministry file already on disk
+    law_dir = kr_dir / "공기업ㆍ준정부기관계약사무규칙"
+    law_dir.mkdir()
+    old_file = law_dir / "기획재정부령.md"
+    old_file.write_text(
+        "---\n법령ID: '010568'\n법령MST: 285569\n---\n# x\n",
+        encoding="utf-8",
+    )
+
+    # Current API says law_type is 재정경제부령 — would normally write to
+    # 재정경제부령.md, but the helper should reuse 기획재정부령.md
+    found = update_mod._find_existing_path_for_law_id(
+        law_name="공기업ㆍ준정부기관 계약사무규칙",
+        law_type="재정경제부령",
+        law_id="010568",
+    )
+    assert found == "kr/공기업ㆍ준정부기관계약사무규칙/기획재정부령.md"
+
+
+def test_find_existing_path_no_match_returns_none(tmp_path, monkeypatch):
+    import laws.update as update_mod
+    import laws.converter as conv
+
+    kr_dir = tmp_path / "kr"
+    kr_dir.mkdir()
+    monkeypatch.setattr(update_mod, "KR_DIR", kr_dir)
+    monkeypatch.setattr(conv, "KR_DIR", kr_dir, raising=False)
+
+    # Empty / missing dir
+    assert update_mod._find_existing_path_for_law_id("foo법", "법률", "999999") is None
+
+    # Existing file with different law_id
+    law_dir = kr_dir / "foo법"
+    law_dir.mkdir()
+    (law_dir / "법률.md").write_text(
+        "---\n법령ID: '111111'\n법령MST: 1\n---\n",
+        encoding="utf-8",
+    )
+    assert update_mod._find_existing_path_for_law_id("foo법", "법률", "999999") is None
+
+
 def test_empty_body_in_update_quarantines_existing_markdown(tmp_path, monkeypatch):
     """Empty-body ValueError from law_to_markdown causes quarantine of existing markdown."""
     import laws.update as update_mod

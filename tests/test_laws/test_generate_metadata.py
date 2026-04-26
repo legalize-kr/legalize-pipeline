@@ -89,6 +89,16 @@ def test_generate_and_build_stats(tmp_path: Path):
     assert "대통령령" in stats["types"]
 
 
+def test_duplicate_mst_raises(tmp_path: Path):
+    """Two files with the same MST must fail fast, not silently lose one entry."""
+    kr_dir = tmp_path / "kr"
+    _write_law(kr_dir / "방송법" / "법률.md", "285487", "방송법", "법률")
+    _write_law(kr_dir / "방송법" / "법률(법률).md", "285487", "방송법", "법률")
+
+    with pytest.raises(RuntimeError, match="Duplicate 법령MST=285487"):
+        gen_meta.generate()
+
+
 def test_save_writes_files(tmp_path: Path):
     kr_dir = tmp_path / "kr"
     _write_law(kr_dir / "민법" / "법률.md", "253527", "민법")

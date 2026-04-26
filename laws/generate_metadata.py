@@ -86,8 +86,17 @@ def generate() -> dict:
     """Scan all law files and generate metadata index.
 
     Returns dict keyed by 법령MST with metadata for each law.
+
+    Raises ``RuntimeError`` if two .md files share a single 법령MST: the
+    MST-keyed dict would silently overwrite one entry, hiding the duplicate
+    from metadata.json so that ``laws.validate`` rejects the survivor as an
+    "orphan" file. Failing fast here surfaces the regression at the step
+    that introduced it (e.g. ``laws.update`` writing a new canonical path
+    without removing the previously qualified file) instead of one CI step
+    later.
     """
     metadata = {}
+    seen_paths: dict[str, str] = {}
 
     for md_file in sorted(KR_DIR.rglob("*.md")):
         fm = parse_frontmatter(md_file)
@@ -100,6 +109,16 @@ def generate() -> dict:
             continue
 
         rel_path = str(md_file.relative_to(WORKSPACE_ROOT))
+
+        if mst in seen_paths:
+            raise RuntimeError(
+                f"Duplicate 법령MST={mst} across files: "
+                f"{seen_paths[mst]} and {rel_path}. "
+                f"One file is an orphan (likely from a path migration that "
+                f"failed to remove the prior file). Resolve by deleting the "
+                f"stale file before regenerating metadata."
+            )
+        seen_paths[mst] = rel_path
 
         metadata[mst] = {
             "path": rel_path,
