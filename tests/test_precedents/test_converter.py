@@ -336,19 +336,27 @@ def test_get_precedent_path_collision_yields_different_paths():
 
 
 def test_get_precedent_path_caps_long_merged_case_numbers():
-    """병합/분리 판결의 수백 건 나열 사건번호가 NAME_MAX를 넘지 않도록 capping."""
+    """병합/분리 판결의 수백 건 나열 사건번호가 NAME_MAX를 넘지 않도록 capping.
+
+    With the composite grammar, a missing 법원명 forces CASENO=serial, so the
+    long caseno is short-circuited. Provide a 법원명 here to actually exercise
+    the cap path on the CASENO slot.
+    """
     many = ", ".join(str(n) for n in range(700, 1000))
     data = {
         "판례정보일련번호": "123456",
-        "사건번호": f"2011고합669, {many} (병합) (분리)",
-        "법원종류코드": "400202",
+        "사건번호": f"2011고합669, {many}(병합)(분리)",
+        "법원명": "대법원",
+        "법원종류코드": "400201",
         "사건종류명": "형사",
+        "선고일자": "20111231",
     }
     path = conv.get_precedent_path(data)
     leaf = path.rsplit("/", 1)[-1]
     assert len(leaf.encode("utf-8")) <= 200, (
         f"leaf exceeds NAME_MAX headroom: {len(leaf.encode('utf-8'))} bytes"
     )
+    # Cap appends `_{serial}` to the truncated CASENO slot (Plan §1.5).
     assert leaf.endswith("_123456.md")
 
 

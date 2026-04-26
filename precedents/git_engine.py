@@ -96,7 +96,7 @@ def commit_precedent(
     title = f"판례: {case_name}" if case_name else f"판례: {case_no}"
     message = (
         f"{title}\n\n"
-        f"판례: https://www.law.go.kr/판례/({prec_id})\n"
+        f"판례: https://www.law.go.kr/LSW/precInfoP.do?precSeq={prec_id}\n"
         f"선고일자: {date}\n"
         f"법원명: {court}\n"
         f"사건종류: {case_type}\n"

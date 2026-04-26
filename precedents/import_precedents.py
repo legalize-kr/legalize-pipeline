@@ -100,6 +100,17 @@ def run(
         f"(skipped_empty={skipped_empty}, parse_errors={parse_errors})"
     )
 
+    # Composite-key collision audit (Plan §3 Phase 1 acceptance).
+    # `get_precedent_path` only appends `_{serial}.md` on registry collisions,
+    # which the new composite grammar should make impossible. Surface the count
+    # so dry-run runs can verify zero.
+    composite_collisions = sum(
+        1
+        for parsed, path in entries
+        if (sn := parsed.get("판례정보일련번호") or "") and path.endswith(f"_{sn}.md")
+    )
+    logger.info(f"Composite-key collisions (serial-suffixed paths): {composite_collisions}")
+
     if git:
         # Sort by 선고일자 for chronological commit history
         entries.sort(key=lambda e: e[0].get("선고일자", "") or "99999999")
@@ -154,6 +165,7 @@ def run(
         "converted": converted,
         "skipped_errors": parse_errors + write_errors,
         "skipped_empty": skipped_empty,
+        "composite_collisions": composite_collisions,
     }
     logger.info(f"Import done: {stats}")
     return stats

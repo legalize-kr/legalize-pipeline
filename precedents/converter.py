@@ -2,11 +2,26 @@
 
 import html
 import re
+import unicodedata
 from xml.etree import ElementTree
 
 import yaml
 
 from .config import COURT_TIER_MAP, KNOWN_CASE_TYPES
+
+# Filename grammar slot separator. Composite key:
+#   {NFC(법원명)}{SEP}{선고일자|0000-00-00}{SEP}{sanitize(사건번호)|serial}.md
+# Decided by `preflight_filename_audit` measurement (7) on the full cache:
+#   - `__` intrudes in 18 records (e.g. "2008나56_본소__제주2008나63_반소"),
+#   - `~` intrudes in 2 records,
+#   - `--` intrudes in 0 records → CHOSEN.
+# Mirrored in compiler-for-precedent/src/render.rs and cli-tools (lockstep PR).
+SEP = "--"
+
+# Sentinel for missing 선고일자. Keeps grammar (3 slots, ISO date shape) intact.
+MISSING_DATE_SENTINEL = "0000-00-00"
+# Sentinel for missing 법원명. Triggers serial fallback in CASENO slot.
+MISSING_COURT_SENTINEL = "미상법원"
 
 _15_FIELDS = [
     "판례정보일련번호", "사건명", "사건번호", "선고일자", "선고",
@@ -93,6 +108,20 @@ def normalize_case_type(case_type: str) -> str:
     return "기타"
 
 
+def _unguarded_sanitize(case_no: str) -> str:
+    """Sanitize without the SEP-collision assert.
+
+    Used by `preflight_filename_audit` to *measure* SEP intrusion in raw data
+    (the assert would defeat the measurement). All production paths must call
+    `sanitize_case_number` instead.
+    """
+    s = case_no.strip()
+    s = _LEADING_PARENS_RE.sub("", s)
+    s = s.replace(", ", "_").replace(",", "_")
+    s = _REMAINING_PARENS_RE.sub(r"_\1", s)
+    return unicodedata.normalize("NFC", s)
+
+
 def sanitize_case_number(case_no: str) -> str:
     """Sanitize a case number for use as a filesystem path component.
 
@@ -100,17 +129,92 @@ def sanitize_case_number(case_no: str) -> str:
     - Removes parenthetical court-location prefixes, e.g. (창원)
     - Replaces ", " and "," with "_"
     - Converts remaining parenthetical suffixes to _content, e.g. (참가) → _참가
+    - NFC-normalizes the result.
+    - Runtime guard: SEP must not occur in the output (would break the slot
+      separator grammar in `compose_filename_stem`). If raw input ever produces
+      a SEP-collision, fail-loud here so we swap SEP via preflight gate.
     """
-    s = case_no.strip()
-    s = _LEADING_PARENS_RE.sub("", s)
-    s = s.replace(", ", "_").replace(",", "_")
-    s = _REMAINING_PARENS_RE.sub(r"_\1", s)
+    s = _unguarded_sanitize(case_no)
+    assert SEP not in s, (
+        f"sanitize_case_number produced SEP-collision: {s!r}; "
+        f"swap SEP via preflight gate (Plan §1.1.1)"
+    )
     return s
 
 
 # Max UTF-8 byte length for a filename stem. Leaves headroom for ".md" and the
 # collision "_{serial}" suffix inside the 255-byte NAME_MAX limit on APFS/ext4.
 MAX_FILENAME_STEM_BYTES = 180
+
+
+def cap_caseno_slot(court: str, date: str, caseno: str, serial: str) -> str:
+    """Cap the composite stem by truncating only the CASENO slot.
+
+    The composite grammar is `{COURT}{SEP}{DATE}{SEP}{CASENO}`. When the stem
+    exceeds `MAX_FILENAME_STEM_BYTES`, only the CASENO slot is truncated so the
+    SEP-delimited grammar always parses (court+date stay intact).
+
+    On truncation, append `_{serial}` to the truncated CASENO so the result
+    remains globally unique and traceable. Truncation respects UTF-8 character
+    boundaries.
+    """
+    prefix = f"{court}{SEP}{date}{SEP}"
+    suffix = f"_{serial}"
+    available = (
+        MAX_FILENAME_STEM_BYTES
+        - len(prefix.encode("utf-8"))
+        - len(suffix.encode("utf-8"))
+    )
+    encoded_caseno = caseno.encode("utf-8")
+    if available <= 0:
+        # Pathological: court+date alone exceed the budget. Fall back to serial.
+        return f"{prefix}{serial}"
+    if len(encoded_caseno) <= available:
+        return f"{prefix}{caseno}"
+    truncated = encoded_caseno[:available].decode("utf-8", errors="ignore")
+    return f"{prefix}{truncated}{suffix}"
+
+
+def compose_filename_stem(
+    court_name: str,
+    judgment_date: str | None,
+    case_no: str,
+    serial: str,
+) -> str:
+    """Compose the unique filename stem from (법원명, 선고일자, 사건번호, serial).
+
+    Inputs:
+      - `court_name`: raw 법원명. Empty/whitespace → `미상법원` and CASENO is
+        forced to serial (fallback prevents empty grammar slots).
+      - `judgment_date`: pre-formatted ISO date (`YYYY-MM-DD`) or None.
+        None → `0000-00-00` sentinel.
+      - `case_no`: raw 사건번호. Empty → serial. NFC-normalized via
+        `sanitize_case_number`.
+      - `serial`: 판례정보일련번호 (used for fallback / cap suffix).
+
+    Output: `{COURT}{SEP}{DATE}{SEP}{CASENO}` — UTF-8 byte length capped at
+    `MAX_FILENAME_STEM_BYTES` via `cap_caseno_slot` (truncates CASENO only).
+
+    All components are NFC-normalized. Deterministic: same input → same output.
+    """
+    raw_court = (court_name or "").strip()
+    court_missing = not raw_court
+    court = MISSING_COURT_SENTINEL if court_missing else normalize_court_name(raw_court)
+    court = unicodedata.normalize("NFC", court)
+
+    date = judgment_date or MISSING_DATE_SENTINEL
+
+    raw_caseno = (case_no or "").strip()
+    if court_missing or not raw_caseno:
+        caseno = serial
+    else:
+        caseno = sanitize_case_number(raw_caseno) or serial
+    caseno = unicodedata.normalize("NFC", caseno)
+
+    stem = f"{court}{SEP}{date}{SEP}{caseno}"
+    if len(stem.encode("utf-8")) <= MAX_FILENAME_STEM_BYTES:
+        return stem
+    return cap_caseno_slot(court, date, caseno, serial)
 
 
 def cap_filename_bytes(filename: str, serial: str) -> str:
@@ -174,27 +278,32 @@ def format_date(date_str: str) -> str | None:
 def get_precedent_path(parsed: dict) -> str:
     """Return the relative Markdown file path for a precedent.
 
-    Format: {court_tier}/{case_type}/{sanitized_case_number}.md
-    Falls back to 판례정보일련번호 when 사건번호 is empty.
-    Handles collisions by appending _{판례정보일련번호}.
+    Format: {case_type}/{court_tier}/{COURT}{SEP}{DATE}{SEP}{CASENO}.md
+    Composite key (court+date+caseno) is unique across the whole dataset, so
+    same-stem collisions should be rare. When they do occur (e.g. truly
+    duplicated upstream record), `_{판례정보일련번호}` is appended.
     """
     serial = parsed.get("판례정보일련번호", "")
     court_code = parsed.get("법원종류코드", "")
     court_name = parsed.get("법원명", "")
     court_tier = get_court_tier(court_code, court_name)
     case_type = normalize_case_type(parsed.get("사건종류명", ""))
+    judgment_date = format_date(parsed.get("선고일자", ""))
 
-    raw_case_no = parsed.get("사건번호", "").strip()
-    if raw_case_no:
-        filename = cap_filename_bytes(sanitize_case_number(raw_case_no), serial)
-    else:
-        filename = serial
+    stem = compose_filename_stem(
+        court_name=court_name,
+        judgment_date=judgment_date,
+        case_no=parsed.get("사건번호", ""),
+        serial=serial,
+    )
 
-    path = f"{case_type}/{court_tier}/{filename}.md"
+    path = unicodedata.normalize("NFC", f"{case_type}/{court_tier}/{stem}.md")
 
     existing = _assigned_paths.get(path)
     if existing is not None and existing != serial:
-        path = f"{case_type}/{court_tier}/{filename}_{serial}.md"
+        path = unicodedata.normalize(
+            "NFC", f"{case_type}/{court_tier}/{stem}_{serial}.md"
+        )
 
     _assigned_paths[path] = serial
     return path
@@ -218,7 +327,7 @@ def precedent_to_markdown(parsed: dict) -> str:
         "법원명": court_name,
         "법원등급": court_tier,
         "사건종류": case_type,
-        "출처": f"https://www.law.go.kr/판례/{serial}",
+        "출처": f"https://www.law.go.kr/LSW/precInfoP.do?precSeq={serial}",
     }
     if judgment_date is not None:
         fm["선고일자"] = judgment_date

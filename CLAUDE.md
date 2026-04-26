@@ -264,6 +264,29 @@ python -m precedents.fetch_cache --workers 3
 
 **환경변수**: `LAW_OC` (법령과 동일한 키)
 
+### 판례 파일명 composite grammar (issue #4)
+
+판례 파일은 `{사건종류}/{법원등급}/{COURT}{SEP}{DATE}{SEP}{CASENO}.md` 로 저장됩니다.
+하급심 사건번호는 법원별로 발급되어 단일키로는 진정한 unique 가 아니기 때문에
+법원명·선고일자·사건번호 합성 키만이 충돌 없이 분리합니다. 단일 진실 원본은
+`legalize-pipeline/precedents/converter.py:compose_filename_stem` 입니다.
+
+- 모듈 상단 상수: `SEP = "--"` (preflight: `__` 18건·`~` 2건 침입 → `--` 0건 채택), `MISSING_DATE_SENTINEL = "0000-00-00"`,
+  `MISSING_COURT_SENTINEL = "미상법원"`, `MAX_FILENAME_STEM_BYTES = 180`.
+  `compiler-for-precedent/src/render.rs` 및 `cli-tools/src/legalize_cli/SEP.py`
+  와 lockstep 으로 동기화 (3-repo PR 의무).
+- `sanitize_case_number` 의 `assert SEP not in result` runtime guard 가 미래
+  입력 변동으로 SEP 가 우연히 발생하면 fail-loud — `precedents/preflight_filename_audit.py`
+  의 SEP intrusion 측정 결과로 `__` → `~` → `--` 순으로 swap.
+- 결측치 정책: 선고일자 누락 → `0000-00-00` (frontmatter 키는 omit 유지),
+  법원명 누락 → `미상법원` + CASENO 를 `serial` 로 강제 폴백, 사건번호 누락 → `serial`.
+- `cap_caseno_slot` 은 stem byte 길이 초과 시 CASENO 슬롯만 잘라내고 `_{serial}`
+  접미사를 붙입니다 — SEP 슬롯은 항상 살아남습니다.
+- 사전 게이트: `python -m precedents.preflight_filename_audit --report ...` 로
+  N1 (composite collision)·N2 (single-key collision)·SEP 결정·NFC mismatch
+  ·cap firing·`판례일련번호` 건전성을 측정. `python -m precedents.dump_oracle
+  --output /tmp/oracle.jsonl` 로 Rust 측 byte-equality 검증용 oracle 생성.
+
 ### 판례 파일명 capping (`NAME_MAX` 대응)
 
 형사 병합(병합)/분리(분리) 판결은 하나의 판결에 여러 연관 사건이 묶일 때 법원이 모든 사건번호를 쉼표로 연결하여 `사건번호` 단일 필드에 기록한다 (예: `2011고합669, 743, 746, ..., 985-1 (병합) (분리)`). 수십~수백 건이 누적되면 변환된 파일명이 500바이트+가 되어 macOS APFS의 `NAME_MAX=255 bytes` 제한을 넘고, `git checkout` 시 `File name too long` 오류로 작업 트리 체크아웃이 실패한다.
