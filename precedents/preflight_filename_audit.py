@@ -40,6 +40,11 @@ from .config import PREC_CACHE_DIR
 
 logger = logging.getLogger(__name__)
 
+# SEP is hardcoded to `_` (single underscore) in `converter.py`. Sanitize emits
+# `_` for merged cases by design — composite filename grammar parses left-anchored
+# with `split(SEP, 2)`, so embedded `_` in CASENO never breaks parsing. The
+# candidates below are kept ONLY as informational intrusion counters (useful
+# diagnostics if a future SEP swap is ever considered).
 CANDIDATE_SEPS = ("__", "~", "--")
 
 
@@ -198,23 +203,15 @@ def run(cache_dir: Path, limit: int | None = None) -> dict:
     serial_dup = sum(c - 1 for c in serial_seen.values() if c > 1)
     serial_dup_samples = [s for s, c in serial_seen.items() if c > 1][:10]
 
-    # SEP decision (Plan §1.1.1)
-    if sep_intrusion["__"] == 0:
-        sep_decision = "__"
-        sep_rationale = "no `__` intrusion in sanitize output"
-    elif sep_intrusion["~"] == 0:
-        sep_decision = "~"
-        sep_rationale = (
-            f"`__` intrusion in {sep_intrusion['__']} records; falling back to `~`"
-        )
-    elif sep_intrusion["--"] == 0:
-        sep_decision = "--"
-        sep_rationale = (
-            f"`__` and `~` both intrude; falling back to `--`"
-        )
-    else:
-        sep_decision = "FAIL"
-        sep_rationale = "all candidate separators intrude — preflight FAIL"
+    # SEP is hardcoded in converter.py (currently `_`). The decision below is
+    # informational only — it reports what `sep_intrusion` measurements would
+    # imply if the SEP gate were active. Production parsing uses left-anchored
+    # split(SEP, 2), so the in-use SEP `_` is allowed to appear inside CASENO.
+    sep_decision = conv.SEP
+    sep_rationale = (
+        f"hardcoded in converter.py (intrusion counters informational only): "
+        f"__={sep_intrusion['__']}, ~={sep_intrusion['~']}, --={sep_intrusion['--']}"
+    )
 
     report = {
         "summary": {
