@@ -271,13 +271,15 @@ python -m precedents.fetch_cache --workers 3
 법원명·선고일자·사건번호 합성 키만이 충돌 없이 분리합니다. 단일 진실 원본은
 `legalize-pipeline/precedents/converter.py:compose_filename_stem` 입니다.
 
-- 모듈 상단 상수: `SEP = "--"` (preflight: `__` 18건·`~` 2건 침입 → `--` 0건 채택), `MISSING_DATE_SENTINEL = "0000-00-00"`,
-  `MISSING_COURT_SENTINEL = "미상법원"`, `MAX_FILENAME_STEM_BYTES = 180`.
-  `compiler-for-precedent/src/render.rs` 및 `cli-tools/src/legalize_cli/SEP.py`
-  와 lockstep 으로 동기화 (3-repo PR 의무).
-- `sanitize_case_number` 의 `assert SEP not in result` runtime guard 가 미래
-  입력 변동으로 SEP 가 우연히 발생하면 fail-loud — `precedents/preflight_filename_audit.py`
-  의 SEP intrusion 측정 결과로 `__` → `~` → `--` 순으로 swap.
+- 모듈 상단 상수: `SEP = "_"` (single underscore, 가독성 우선),
+  `MISSING_DATE_SENTINEL = "0000-00-00"`, `MISSING_COURT_SENTINEL = "미상법원"`,
+  `MAX_FILENAME_STEM_BYTES = 180`. `compiler-for-precedent/src/render.rs` 및
+  `cli-tools/src/legalize_cli/SEP.py` 와 lockstep 으로 동기화 (3-repo PR 의무).
+- `sanitize_case_number` 의 출력에는 `_` 가 정상적으로 포함됩니다 (병합 사건
+  `2000나10828_10835_병합` 등). 파일명 파싱은 좌측 anchor 의 `split(SEP, 2)` 로
+  수행 — 법원명에는 `_` 가 없고 선고일자는 고정 `YYYY-MM-DD` 포맷이므로 처음 두
+  번의 `_` split 이 항상 (법원명, 선고일자) 슬롯을 분리합니다. 이후 잔여 문자열
+  전체가 사건번호 슬롯이 됩니다.
 - 결측치 정책: 선고일자 누락 → `0000-00-00` (frontmatter 키는 omit 유지),
   법원명 누락 → `미상법원` + CASENO 를 `serial` 로 강제 폴백, 사건번호 누락 → `serial`.
 - `cap_caseno_slot` 은 stem byte 길이 초과 시 CASENO 슬롯만 잘라내고 `_{serial}`

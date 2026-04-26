@@ -26,15 +26,17 @@ unique key 입니다.
 | `COURT` | `normalize_court_name(법원명)` (NFC) | `미상법원` + CASENO 를 `serial` 로 강제 폴백 |
 | `DATE` | `YYYY-MM-DD` (ISO 8601) | `0000-00-00` 센티넬 |
 | `CASENO` | `sanitize_case_number(사건번호)` (NFC) | `serial` 폴백 |
-| `SEP` | `--` (이중 hyphen) — preflight (`__` 18건 / `~` 2건 침입 → `--` 0건) 결정 | 추가 침입 검출 시 swap 후 lockstep PR |
+| `SEP` | `_` (single underscore, 가독성 우선) | 변경 시 lockstep PR (3-repo) |
 
 상수는 `converter.py` 모듈 상단에 분리되어 있습니다 (`SEP`, `MISSING_DATE_SENTINEL`,
 `MISSING_COURT_SENTINEL`, `MAX_FILENAME_STEM_BYTES`). `compiler-for-precedent` (Rust)
 및 `cli-tools` 와 lockstep 으로 동기화해야 합니다 (3-repo PR 의무).
 
-`sanitize_case_number` 는 `assert SEP not in result` runtime guard 를 둬서
-미래 입력 변동으로 SEP 가 우연히 발생하면 즉시 fail-loud 합니다 (preflight 가
-SEP swap 결정을 내릴 수 있도록).
+`sanitize_case_number` 의 출력에는 `_` 가 정상적으로 포함됩니다 (병합 사건
+`2000나10828_10835_병합` 등). 파일명 파싱은 좌측 anchor 의 `split(SEP, 2)` 로
+수행하며, 법원명에는 `_` 가 없고 선고일자는 고정 `YYYY-MM-DD` 포맷이므로 처음
+두 번의 split 이 항상 (법원명, 선고일자) 슬롯을 분리하고 잔여 문자열 전체가
+사건번호 슬롯이 됩니다.
 
 ## Preflight 측정 (필수 사전 게이트)
 

@@ -56,7 +56,7 @@ def test_compose_merged_case_number_preserves_underscore():
         case_no="2000나10828, 10835(병합)",
         serial="222222",
     )
-    parts = stem.split(conv.SEP)
+    parts = stem.split(conv.SEP, 2)
     assert len(parts) == 3, f"grammar must split into exactly 3 slots: {stem!r}"
     assert parts[0] == "대법원"
     assert parts[1] == "2000-01-01"
@@ -84,7 +84,7 @@ def test_compose_missing_court_falls_back_to_serial_in_caseno_slot():
         case_no="2023다12345",  # ignored when court is missing
         serial="444444",
     )
-    parts = stem.split(conv.SEP)
+    parts = stem.split(conv.SEP, 2)
     assert parts == [conv.MISSING_COURT_SENTINEL, "2023-12-01", "444444"]
 
 
@@ -95,7 +95,7 @@ def test_compose_missing_case_no_falls_back_to_serial():
         case_no="",
         serial="555555",
     )
-    parts = stem.split(conv.SEP)
+    parts = stem.split(conv.SEP, 2)
     assert parts == ["대법원", "2023-12-01", "555555"]
 
 
@@ -106,7 +106,7 @@ def test_compose_whitespace_only_court_treated_as_missing():
         case_no="2023다12345",
         serial="666666",
     )
-    parts = stem.split(conv.SEP)
+    parts = stem.split(conv.SEP, 2)
     assert parts[0] == conv.MISSING_COURT_SENTINEL
     assert parts[2] == "666666"
 
@@ -125,7 +125,7 @@ def test_compose_long_caseno_caps_caseno_slot_only():
     )
     encoded_len = len(stem.encode("utf-8"))
     assert encoded_len <= conv.MAX_FILENAME_STEM_BYTES
-    parts = stem.split(conv.SEP)
+    parts = stem.split(conv.SEP, 2)
     assert len(parts) == 3, "grammar must remain 3-slot after cap"
     assert parts[0] == "대법원"
     assert parts[1] == "2011-12-31"
@@ -141,7 +141,7 @@ def test_cap_caseno_slot_preserves_utf8_boundary():
     )
     stem.encode("utf-8")  # decode/encode round-trip — would raise on broken codepoint
     assert len(stem.encode("utf-8")) <= conv.MAX_FILENAME_STEM_BYTES
-    parts = stem.split(conv.SEP)
+    parts = stem.split(conv.SEP, 2)
     assert len(parts) == 3
     assert stem.endswith("_888888")
 
@@ -182,15 +182,23 @@ def test_sanitize_case_number_emits_nfc():
 
 
 # ---------------------------------------------------------------------------
-# SEP runtime guard
+# SEP semantics — sanitize legitimately emits `_` for merged cases
 # ---------------------------------------------------------------------------
 
-def test_sanitize_case_number_assert_blocks_sep_collision(monkeypatch):
-    """If raw input ever contains the literal SEP, sanitize must fail-loud."""
-    # Synthesize a worst-case raw caseno containing the literal SEP.
-    raw = f"2023다1{conv.SEP}2"
-    with pytest.raises(AssertionError, match="SEP-collision"):
-        conv.sanitize_case_number(raw)
+def test_sanitize_case_number_emits_underscore_for_merged_cases():
+    """sanitize output legitimately contains `_` (= SEP) for merged cases.
+
+    The composite filename grammar parses left-anchored with split(SEP, 2)
+    — court has no `_`, date is fixed `YYYY-MM-DD`, so embedded `_` in CASENO
+    never breaks parsing.
+    """
+    assert conv.sanitize_case_number("(창원)2024가합1234") == "2024가합1234"
+    assert conv.sanitize_case_number("2000므1257, 1264") == "2000므1257_1264"
+    assert (
+        conv.sanitize_case_number("2000므1257(본소), 1264(반소)")
+        == "2000므1257_본소_1264_반소"
+    )
+    assert conv.SEP in conv.sanitize_case_number("2011고합669, 700, 701 (병합)")
 
 
 # ---------------------------------------------------------------------------
@@ -264,8 +272,8 @@ def test_get_precedent_path_grammar_regex():
 # ---------------------------------------------------------------------------
 
 # Korean Hangul + ASCII letters/digits + a few separators that real case
-# numbers contain. Excludes the SEP literal so the assert never fires
-# spuriously inside the strategy.
+# numbers contain. SEP (`_`) is intentionally included — sanitize emits it for
+# merged cases. Court name alphabet excludes `_` (real court names are Korean).
 _caseno_alphabet = st.characters(
     whitelist_categories=("Lu", "Ll", "Lo", "Nd"),
     whitelist_characters="-_().,가나다라마바사아자차카타파하",
@@ -286,13 +294,15 @@ _court_alphabet = st.characters(
 )
 @settings(max_examples=200, deadline=None)
 def test_property_compose_grammar_is_3_slot(court_name, case_no, year, month, day, serial):
-    """Any reasonable input yields exactly 3 SEP-delimited slots."""
+    """Left-anchored split(SEP, 2) yields exactly 3 slots: court, date, caseno.
+
+    The CASENO slot may itself contain `_` (e.g. merged cases), so unbounded
+    split would over-split. Court names cannot contain `_`, date is fixed
+    `YYYY-MM-DD` shape, so the first two splits always isolate court + date.
+    """
     date = f"{year:04d}-{month:02d}-{day:02d}"
-    # Skip inputs that would fail the SEP assert by construction.
-    if conv.SEP in case_no:
-        return
     stem = conv.compose_filename_stem(court_name, date, case_no, serial)
-    parts = stem.split(conv.SEP)
+    parts = stem.split(conv.SEP, 2)
     assert len(parts) == 3, f"grammar broken: {stem!r}"
 
 

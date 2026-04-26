@@ -11,12 +11,13 @@ from .config import COURT_TIER_MAP, KNOWN_CASE_TYPES
 
 # Filename grammar slot separator. Composite key:
 #   {NFC(법원명)}{SEP}{선고일자|0000-00-00}{SEP}{sanitize(사건번호)|serial}.md
-# Decided by `preflight_filename_audit` measurement (7) on the full cache:
-#   - `__` intrudes in 18 records (e.g. "2008나56_본소__제주2008나63_반소"),
-#   - `~` intrudes in 2 records,
-#   - `--` intrudes in 0 records → CHOSEN.
+# Single underscore chosen for readability. Note: sanitize_case_number can also
+# emit `_` inside the CASENO slot (e.g. merged cases `2000나10828_10835_병합`).
+# Parsing is therefore left-anchored with maxsplit=2 — court names are Korean
+# and never contain `_`, the date is fixed `YYYY-MM-DD`, so the first two
+# `_`-splits always isolate (court, date) and the remainder is CASENO.
 # Mirrored in compiler-for-precedent/src/render.rs and cli-tools (lockstep PR).
-SEP = "--"
+SEP = "_"
 
 # Sentinel for missing 선고일자. Keeps grammar (3 slots, ISO date shape) intact.
 MISSING_DATE_SENTINEL = "0000-00-00"
@@ -108,12 +109,19 @@ def normalize_case_type(case_type: str) -> str:
     return "기타"
 
 
-def _unguarded_sanitize(case_no: str) -> str:
-    """Sanitize without the SEP-collision assert.
+def sanitize_case_number(case_no: str) -> str:
+    """Sanitize a case number for use as a filesystem path component.
 
-    Used by `preflight_filename_audit` to *measure* SEP intrusion in raw data
-    (the assert would defeat the measurement). All production paths must call
-    `sanitize_case_number` instead.
+    - Strips leading/trailing whitespace
+    - Removes parenthetical court-location prefixes, e.g. (창원)
+    - Replaces ", " and "," with "_" (merged-case separator)
+    - Converts remaining parenthetical suffixes to _content, e.g. (참가) → _참가
+    - NFC-normalizes the result.
+
+    Note: the output legitimately contains `_` (the SEP) for merged cases.
+    Parsing of the composite filename relies on left-anchored split with
+    maxsplit=2 (court has no `_`, date is `YYYY-MM-DD`), so embedded `_` in
+    the CASENO slot never breaks grammar.
     """
     s = case_no.strip()
     s = _LEADING_PARENS_RE.sub("", s)
@@ -122,24 +130,10 @@ def _unguarded_sanitize(case_no: str) -> str:
     return unicodedata.normalize("NFC", s)
 
 
-def sanitize_case_number(case_no: str) -> str:
-    """Sanitize a case number for use as a filesystem path component.
-
-    - Strips leading/trailing whitespace
-    - Removes parenthetical court-location prefixes, e.g. (창원)
-    - Replaces ", " and "," with "_"
-    - Converts remaining parenthetical suffixes to _content, e.g. (참가) → _참가
-    - NFC-normalizes the result.
-    - Runtime guard: SEP must not occur in the output (would break the slot
-      separator grammar in `compose_filename_stem`). If raw input ever produces
-      a SEP-collision, fail-loud here so we swap SEP via preflight gate.
-    """
-    s = _unguarded_sanitize(case_no)
-    assert SEP not in s, (
-        f"sanitize_case_number produced SEP-collision: {s!r}; "
-        f"swap SEP via preflight gate (Plan §1.1.1)"
-    )
-    return s
+# Backward-compatibility alias for `preflight_filename_audit`, which used to call
+# the unguarded variant when measuring SEP intrusion. With the assert removed,
+# both names route to the same implementation.
+_unguarded_sanitize = sanitize_case_number
 
 
 # Max UTF-8 byte length for a filename stem. Leaves headroom for ".md" and the
