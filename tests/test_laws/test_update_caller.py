@@ -42,6 +42,32 @@ def test_find_existing_path_for_law_id(tmp_path, monkeypatch):
     assert found == "kr/공기업ㆍ준정부기관계약사무규칙/기획재정부령.md"
 
 
+def test_find_existing_path_for_law_id_across_renamed_group(tmp_path, monkeypatch):
+    import laws.update as update_mod
+    import laws.converter as conv
+
+    kr_dir = tmp_path / "kr"
+    kr_dir.mkdir()
+    monkeypatch.setattr(update_mod, "KR_DIR", kr_dir)
+    monkeypatch.setattr(update_mod, "LAW_API_KEY", "test-key")
+    monkeypatch.setattr(conv, "KR_DIR", kr_dir, raising=False)
+
+    old_dir = kr_dir / "헌법재판소참고인비용지급에관한규칙"
+    old_dir.mkdir()
+    old_file = old_dir / "헌법재판소규칙.md"
+    old_file.write_text(
+        "---\n법령ID: '006104'\n법령MST: 285845\n---\n# x\n",
+        encoding="utf-8",
+    )
+
+    found = update_mod._find_existing_path_for_law_id(
+        law_name="헌법재판소 참고인 등 비용지급에 관한 규칙",
+        law_type="헌법재판소규칙",
+        law_id="006104",
+    )
+    assert found == "kr/헌법재판소참고인비용지급에관한규칙/헌법재판소규칙.md"
+
+
 def test_find_existing_path_no_match_returns_none(tmp_path, monkeypatch):
     import laws.update as update_mod
     import laws.converter as conv

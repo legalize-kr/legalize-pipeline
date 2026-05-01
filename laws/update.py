@@ -33,6 +33,26 @@ from .import_laws import build_commit_msg
 logger = logging.getLogger(__name__)
 
 
+def _markdown_law_id(md_file) -> str | None:
+    try:
+        text = md_file.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if not text.startswith("---"):
+        return None
+    try:
+        end = text.index("---", 3)
+    except ValueError:
+        return None
+    try:
+        fm = yaml.safe_load(text[3:end])
+    except yaml.YAMLError:
+        return None
+    if isinstance(fm, dict):
+        return str(fm.get("법령ID", ""))
+    return None
+
+
 def _find_existing_path_for_law_id(law_name: str, law_type: str, law_id: str) -> str | None:
     """Return the relative path of an existing on-disk file matching ``law_id``.
 
@@ -40,39 +60,33 @@ def _find_existing_path_for_law_id(law_name: str, law_type: str, law_id: str) ->
     ``get_law_path`` cannot honor the compiler's first-write-wins reverse
     index across runs. Without this lookup, a law whose canonical path was
     previously qualified (e.g. ``법률(법률).md``) or whose ``법령구분`` shifted
-    (e.g. ``기획재정부령`` → ``재정경제부령``) gets a *new* file written at
-    the freshly computed canonical path, while the old file is left behind
-    as an orphan. ``laws.validate`` then fails because two files share one
-    MST and only one survives ``generate_metadata``'s MST-keyed dict.
+    (e.g. ``기획재정부령`` → ``재정경제부령``), or whose title changes enough
+    to compute a new group directory, gets a *new* file written at the
+    freshly computed canonical path, while the old file is left behind as an
+    orphan. ``laws.validate`` then fails because two files share one MST and
+    only one survives ``generate_metadata``'s MST-keyed dict.
 
     The fix mirrors compiler::PathRegistry's ``_by_id`` semantics by
-    consulting the file system: if any file in the expected group directory
-    declares the same ``법령ID``, reuse that path.
+    consulting the file system: prefer the expected group directory for the
+    common law-type rename case, then fall back to all ``kr/**/*.md`` files
+    for law title renames that move the group directory.
     """
     if not law_id:
         return None
 
     group, _ = get_group_and_filename(law_name, law_type)
     group_dir = KR_DIR / group
-    if not group_dir.is_dir():
-        return None
+    candidates = []
+    if group_dir.is_dir():
+        candidates.extend(sorted(group_dir.glob("*.md")))
+    candidates.extend(
+        md_file
+        for md_file in sorted(KR_DIR.rglob("*.md"))
+        if md_file.parent != group_dir
+    )
 
-    for md_file in sorted(group_dir.glob("*.md")):
-        try:
-            text = md_file.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        if not text.startswith("---"):
-            continue
-        try:
-            end = text.index("---", 3)
-        except ValueError:
-            continue
-        try:
-            fm = yaml.safe_load(text[3:end])
-        except yaml.YAMLError:
-            continue
-        if isinstance(fm, dict) and str(fm.get("법령ID", "")) == str(law_id):
+    for md_file in candidates:
+        if _markdown_law_id(md_file) == str(law_id):
             return str(md_file.relative_to(KR_DIR.parent))
 
     return None
