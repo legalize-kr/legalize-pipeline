@@ -21,6 +21,7 @@ def test_find_existing_path_for_law_id(tmp_path, monkeypatch):
     kr_dir = tmp_path / "kr"
     kr_dir.mkdir()
     monkeypatch.setattr(update_mod, "KR_DIR", kr_dir)
+    monkeypatch.setattr(update_mod, "LAW_API_KEY", "test-key")
     monkeypatch.setattr(conv, "KR_DIR", kr_dir, raising=False)
 
     # Old-ministry file already on disk
@@ -102,6 +103,7 @@ def test_empty_body_in_update_quarantines_existing_markdown(tmp_path, monkeypatc
     kr_dir = tmp_path / "kr"
     kr_dir.mkdir()
     monkeypatch.setattr(update_mod, "KR_DIR", kr_dir)
+    monkeypatch.setattr(update_mod, "LAW_API_KEY", "test-key")
     monkeypatch.setattr(conv, "KR_DIR", kr_dir, raising=False)
     monkeypatch.setattr(failures, "FAILED_FILE", tmp_path / ".failed_msts.json")
     # Prevent the augment_history path from writing `foo법.json` (empty) into
