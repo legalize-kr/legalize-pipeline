@@ -180,9 +180,9 @@ def build_frontmatter(metadata: dict) -> dict:
     return fm
 
 
-# Regex to detect structural headings (편/장/절/관) and capture the type
+# Regex to detect structural headings and capture the type.
 _STRUCTURE_RE = re.compile(
-    r"^제\d+(?:의\d+)?(편|장|절|관)\s*"
+    r"^제\s*[\d일이삼사오육칠팔구십]+(?:의\s*[\d일이삼사오육칠팔구십]+)?\s*([편장절관항속목])\s*"
 )
 
 # Regex to strip 호 prefix: "1." or "1의2." etc.
@@ -196,8 +196,10 @@ def _normalize_ws(text: str) -> str:
     """Collapse runs of horizontal whitespace to a single space."""
     return re.sub(r"[ \t]+", " ", text).strip()
 
-# Heading level by structure type
+# Heading level by structure type. Rare lower structure labels are rendered as
+# captions because article headings already use `#####`.
 _STRUCTURE_LEVEL = {"편": "#", "장": "##", "절": "###", "관": "####"}
+_CAPTION_STRUCTURE_TYPES = {"항", "속", "목"}
 
 
 def _dedent_content(text: str) -> str:
@@ -234,12 +236,32 @@ def articles_to_markdown(articles: list[dict]) -> str:
     for article in articles:
         number = article.get("조문번호", "")
         branch_number = article.get("조문가지번호", "")
+        article_kind = article.get("조문여부", "")
         title = article.get("조문제목", "")
         content = (article.get("조문내용") or "").strip().translate(_DOT_NORMALIZE)
 
-        # Detect structural headings (편/장/절/관)
+        # `<조문여부>전문</조문여부>` uses `<조문번호>` only as a placement key.
+        # It must not become a `제N조` heading.
         match = _STRUCTURE_RE.match(content) if not title and content else None
-        if match:
+        if match and (article_kind == "전문" or not article_kind):
+            structure_type = match.group(1)
+            level = _STRUCTURE_LEVEL.get(structure_type)
+            if level:
+                lines.append(f"{level} {content}")
+                lines.append("")
+                continue
+            if structure_type in _CAPTION_STRUCTURE_TYPES:
+                lines.append(f"**{content}**")
+                lines.append("")
+                continue
+
+        if article_kind == "전문":
+            if content:
+                lines.append(content)
+                lines.append("")
+            continue
+
+        if match and not article_kind:
             level = _STRUCTURE_LEVEL[match.group(1)]
             lines.append(f"{level} {content}")
             lines.append("")

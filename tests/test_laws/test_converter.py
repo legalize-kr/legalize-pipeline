@@ -307,6 +307,95 @@ def test_structural_heading_gwan():
     assert md.startswith("#### 제1관 총칙")
 
 
+@pytest.mark.parametrize(
+    ("kind", "expected_prefix"),
+    [
+        ("편", "#"),
+        ("장", "##"),
+        ("절", "###"),
+        ("관", "####"),
+    ],
+)
+def test_non_article_structural_headings_use_existing_levels(kind, expected_prefix):
+    articles = [
+        {
+            "조문번호": "99",
+            "조문여부": "전문",
+            "조문제목": "",
+            "조문내용": f"제1{kind} 테스트",
+            "항": [],
+        }
+    ]
+    md = articles_to_markdown(articles)
+    assert md == f"{expected_prefix} 제1{kind} 테스트\n"
+    assert "##### 제99조" not in md
+
+
+@pytest.mark.parametrize("kind", ["항", "속", "목"])
+def test_non_article_minor_structural_headings_render_as_captions(kind):
+    articles = [
+        {
+            "조문번호": "350",
+            "조문여부": "전문",
+            "조문제목": "",
+            "조문내용": f"제1{kind} 테스트",
+            "항": [],
+        },
+        {
+            "조문번호": "350",
+            "조문여부": "조문",
+            "조문제목": "진짜 조문",
+            "조문내용": "제350조(진짜 조문) 본문",
+            "항": [],
+        },
+    ]
+    md = articles_to_markdown(articles)
+    assert f"**제1{kind} 테스트**" in md
+    assert "##### 제350조\n" not in md
+    assert md.count("##### 제350조") == 1
+    assert "##### 제350조 (진짜 조문)" in md
+
+
+def test_non_article_plain_content_does_not_use_article_number_heading():
+    articles = [
+        {
+            "조문번호": "0",
+            "조문여부": "전문",
+            "조문제목": "",
+            "조문내용": "전문",
+            "항": [],
+        },
+        {
+            "조문번호": "0",
+            "조문여부": "전문",
+            "조문제목": "",
+            "조문내용": "유구한 역사와 전통에 빛나는 우리 대한국민은...",
+            "항": [],
+        },
+        {
+            "조문번호": "1",
+            "조문여부": "조문",
+            "조문제목": "",
+            "조문내용": "",
+            "항": [],
+        },
+    ]
+    md = articles_to_markdown(articles)
+    assert "##### 제0조" not in md
+    assert "전문\n\n유구한 역사와 전통에 빛나는 우리 대한국민은..." in md
+    assert "##### 제1조" in md
+
+
+def test_non_article_empty_content_is_skipped():
+    articles = [
+        {"조문번호": "0", "조문여부": "전문", "조문제목": "", "조문내용": " ", "항": []},
+        {"조문번호": "1", "조문여부": "조문", "조문제목": "", "조문내용": "", "항": []},
+    ]
+    md = articles_to_markdown(articles)
+    assert "##### 제0조" not in md
+    assert md.startswith("##### 제1조")
+
+
 def test_paragraph_with_ho_and_mok():
     articles = [
         {

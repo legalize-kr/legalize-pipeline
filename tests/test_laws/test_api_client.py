@@ -78,6 +78,33 @@ def test_get_law_detail_api_error():
         api_client.get_law_detail("000000")
 
 
+@responses_lib.activate
+def test_get_law_detail_preserves_article_kind():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<법령>
+  <기본정보>
+    <법령명_한글><![CDATA[테스트법]]></법령명_한글>
+    <법종구분>법률</법종구분>
+  </기본정보>
+  <조문>
+    <조문단위>
+      <조문번호>898</조문번호>
+      <조문여부>전문</조문여부>
+      <조문내용><![CDATA[제1항 협의상 파양]]></조문내용>
+    </조문단위>
+    <조문단위>
+      <조문번호>898</조문번호>
+      <조문여부>조문</조문여부>
+      <조문제목><![CDATA[협의상 파양]]></조문제목>
+      <조문내용><![CDATA[제898조(협의상 파양) 본문]]></조문내용>
+    </조문단위>
+  </조문>
+</법령>""".encode()
+    responses_lib.add(responses_lib.GET, f"{LAW_API_BASE}/lawService.do", body=xml, status=200)
+    detail = api_client.get_law_detail("32")
+    assert [article["조문여부"] for article in detail["articles"]] == ["전문", "조문"]
+
+
 def test_parse_dot_date():
     assert api_client._parse_dot_date("1958.2.22") == "19580222"
     assert api_client._parse_dot_date("2024.1.1") == "20240101"

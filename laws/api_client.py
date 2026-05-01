@@ -131,6 +131,7 @@ def get_law_detail(mst_id: str | int) -> dict:
         article = {
             "조문번호": jo.findtext("조문번호", ""),
             "조문가지번호": jo.findtext("조문가지번호", ""),
+            "조문여부": jo.findtext("조문여부", ""),
             "조문제목": jo.findtext("조문제목", ""),
             "조문내용": jo.findtext("조문내용", ""),
         }
