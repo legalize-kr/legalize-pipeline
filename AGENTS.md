@@ -162,7 +162,7 @@ precedent-kr/{사건종류}/{법원등급}/{법원명}_{선고일자}_{사건번
 2. `legalize-kr/legalize-pipeline` → `LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline/`
 3. `legalize-kr/legalize-web` → `LEGALIZE-KR-WORKSPACE-ROOT/legalize-web/`
 4. `LEGALIZE_CACHE_DIR` secret으로 주입된 영속 캐시 → `LEGALIZE-KR-WORKSPACE-ROOT/.cache` 심볼릭 링크
-5. `python -m laws.update` 실행 (7일 lookback)
+5. `python -m laws.update --days 14` 실행 (14일 lookback)
 6. `python -m laws.validate` 실행
 7. 데이터 저장소 push
 8. `stats.json` → `legalize-web/` 복사 및 push

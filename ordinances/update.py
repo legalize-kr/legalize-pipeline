@@ -58,7 +58,7 @@ def run(
     types: list[str] | None = None,
     org: str = "",
     sborg: str = "",
-    days: int = 10,
+    days: int = 14,
 ) -> dict[str, int]:
     date_range = _date_range(days)
     logger.info("searching ordinances in date range %s", date_range)
@@ -94,7 +94,7 @@ def main() -> None:
     parser.add_argument("--type", dest="types", action="append", help="자치법규종류. Repeatable.")
     parser.add_argument("--org", default="", help="Optional law.go.kr 광역 org code")
     parser.add_argument("--sborg", default="", help="Optional law.go.kr 기초 sborg code")
-    parser.add_argument("--days", type=int, default=10, help="Look back this many days for daily updates")
+    parser.add_argument("--days", type=int, default=14, help="Look back this many days for daily updates")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     run(

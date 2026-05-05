@@ -31,7 +31,7 @@ def test_run_fetches_then_imports(tmp_path, monkeypatch):
         "skipped": 6,
         "errors": 7,
     }
-    assert calls[0] == ("fetch", ["조례"], {"org": "11", "sborg": "110", "max_entries": 10, "date_range": "range-10"})
+    assert calls[0] == ("fetch", ["조례"], {"org": "11", "sborg": "110", "max_entries": 10, "date_range": "range-14"})
     assert calls[2] == ("import", tmp_path, None, True, ["1"], True)
 
 

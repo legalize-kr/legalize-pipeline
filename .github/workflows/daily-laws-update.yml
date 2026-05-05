@@ -74,7 +74,7 @@ jobs:
           LAW_OC: ${{ secrets.LAW_OC }}
         run: |
           . "$WORKSPACE_ROOT/.venv/bin/activate"
-          python -m laws.update
+          python -m laws.update --days 14
 
       - name: Validate
         working-directory: ${{ env.PIPELINE_REPO }}

@@ -68,7 +68,7 @@ python -m laws.import_laws --from-cache --dry-run
 ### 증분 업데이트 (일일 실행)
 
 ```bash
-# 최근 7일
+# 최근 14일
 python -m laws.update
 
 # 최근 30일

@@ -4,7 +4,7 @@ Uses search API to find recently changed laws, then fetches and commits
 only the new versions directly (no full history traversal).
 
 Usage (from legalize-pipeline root):
-    python -m laws.update                    # Update recent laws (default 7 days)
+    python -m laws.update                    # Update recent laws (default 14 days)
     python -m laws.update --days 30          # Look back 30 days
     python -m laws.update --law-type 법률    # Only 법률
     python -m laws.update --dry-run          # Preview only
@@ -93,7 +93,7 @@ def _find_existing_path_for_law_id(law_name: str, law_type: str, law_id: str) ->
 
 
 def update(
-    days: int = 7,
+    days: int = 14,
     law_type_filter: str | None = None,
     dry_run: bool = False,
     max_pages: int = 50,
@@ -262,7 +262,7 @@ def update(
 
 def main():
     parser = argparse.ArgumentParser(description="Incremental law updater")
-    parser.add_argument("--days", type=int, default=7, help="Look back N days (default: 7)")
+    parser.add_argument("--days", type=int, default=14, help="Look back N days (default: 14)")
     parser.add_argument("--law-type", help="Filter by 법령구분 (e.g., 법률)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(

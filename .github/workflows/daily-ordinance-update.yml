@@ -73,9 +73,9 @@ jobs:
         run: |
           . "$WORKSPACE_ROOT/.venv/bin/activate"
           if [ -n "$LIMIT" ]; then
-            python -m ordinances.update --repo "$ORDINANCE_KR_REPO" --limit "$LIMIT" --days 10 --commit
+            python -m ordinances.update --repo "$ORDINANCE_KR_REPO" --limit "$LIMIT" --days 14 --commit
           else
-            python -m ordinances.update --repo "$ORDINANCE_KR_REPO" --days 10 --commit
+            python -m ordinances.update --repo "$ORDINANCE_KR_REPO" --days 14 --commit
           fi
 
       - name: Validate

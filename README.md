@@ -76,7 +76,7 @@ python -m laws.import_laws --from-cache
 #### 증분 업데이트 (일일)
 
 ```bash
-# 최근 7일
+# 최근 14일
 python -m laws.update
 
 # 최근 30일
@@ -257,7 +257,7 @@ ORDINANCE_KR_REPO=/path/to/ordinance-kr
 ### daily-laws-update.yml (매일 13:00 KST)
 
 1. 저장소 체크아웃
-2. `python -m laws.update` 실행 (최근 7일)
+2. `python -m laws.update --days 14` 실행 (최근 14일)
 3. `python -m laws.validate` 검증
 4. 변경사항 자동 push
 

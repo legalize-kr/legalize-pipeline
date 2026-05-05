@@ -57,7 +57,7 @@ def run(
     commit: bool = False,
     knd: list[str] | None = None,
     org: str = "",
-    days: int = 10,
+    days: int = 14,
 ) -> dict[str, int]:
     date_range = _date_range(days)
     logger.info("searching administrative rules in date range %s", date_range)
@@ -92,7 +92,7 @@ def main() -> None:
     parser.add_argument("--commit", action="store_true")
     parser.add_argument("--knd", action="append", help="행정규칙종류 code. Repeatable.")
     parser.add_argument("--org", default="", help="Optional law.go.kr org code filter")
-    parser.add_argument("--days", type=int, default=10, help="Look back this many days for daily updates")
+    parser.add_argument("--days", type=int, default=14, help="Look back this many days for daily updates")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     run(repo=args.repo, limit=args.limit, workers=args.workers, commit=args.commit, knd=args.knd, org=args.org, days=args.days)
