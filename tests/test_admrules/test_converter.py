@@ -99,6 +99,8 @@ def test_normalize_ministry_name_maps_safe_ministry_renames():
     assert normalize_ministry_name("기획재정부") == "재정경제부"
     assert normalize_ministry_name("평생교육진흥원") == "국가평생교육진흥원"
     assert normalize_ministry_name("방송통신사무소") == "방송미디어통신사무소"
+    assert normalize_ministry_name("중앙민방위방재교육원") == "국가재난안전교육원"
+    assert normalize_ministry_name("국가민방위재난안전교육원") == "국가재난안전교육원"
 
 
 def test_resolve_ministry_names_uses_canonical_parent_for_path_grouping():
@@ -193,6 +195,14 @@ def test_resolve_org_path_applies_legal_parent_chain_for_external_agencies():
     assert resolve_org_path("국립전파연구원", "국립전파연구원") == [
         "과학기술정보통신부",
         "국립전파연구원",
+    ]
+    assert resolve_org_path("국민안전처", "국립재난안전연구원") == [
+        "행정안전부",
+        "국립재난안전연구원",
+    ]
+    assert resolve_org_path("국민안전처", "국가재난안전교육원") == [
+        "행정안전부",
+        "국가재난안전교육원",
     ]
     assert resolve_org_path("중앙전파관리소", "중앙전파관리소") == [
         "과학기술정보통신부",
@@ -291,6 +301,35 @@ def test_get_admrule_path_uses_current_environment_ministry_for_river_rules():
         "행정규칙일련번호": "2100000079411",
     })
     assert path == "기후에너지환경부/_본부/훈령/하천에 관한 사무처리규정/본문.md"
+
+
+def test_get_admrule_path_maps_abolished_safety_ministry_subagencies():
+    reset_path_registry()
+    education_path = get_admrule_path({
+        "상위부처명": "국민안전처",
+        "소관부처명": "중앙민방위방재교육원",
+        "담당부서기관명": "중앙민방위방재교육원",
+        "행정규칙종류": "훈령",
+        "행정규칙명": "중앙민방위방재교육원 위임·전결규정",
+        "행정규칙일련번호": "100",
+    })
+    assert (
+        education_path
+        == "행정안전부/국가재난안전교육원/훈령/중앙민방위방재교육원 위임·전결규정/본문.md"
+    )
+
+    research_path = get_admrule_path({
+        "상위부처명": "국민안전처",
+        "소관부처명": "국립재난안전연구원",
+        "담당부서기관명": "국립재난안전연구원",
+        "행정규칙종류": "훈령",
+        "행정규칙명": "국립재난안전연구원 재난안전연구자문위원회 규정",
+        "행정규칙일련번호": "101",
+    })
+    assert (
+        research_path
+        == "행정안전부/국립재난안전연구원/훈령/국립재난안전연구원 재난안전연구자문위원회 규정/본문.md"
+    )
 
 
 def test_get_admrule_path_keeps_independent_special_committee_as_root():

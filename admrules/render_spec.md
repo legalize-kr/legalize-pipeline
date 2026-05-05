@@ -58,9 +58,10 @@ before the Rust compiler parity gate exists.
   and `평생교육진흥원` is normalized to `국가평생교육진흥원` under
   `교육부`.
 - The current rename map includes same-agency organization changes such as
-  `국립환경인력개발원` to `국립환경인재개발원`, and current central-agency
-  names such as `행정자치부` to `행정안전부` and `기획재정부` to
-  `재정경제부`.
+  `국립환경인력개발원` to `국립환경인재개발원` and `중앙민방위방재교육원`
+  or `국가민방위재난안전교육원` to `국가재난안전교육원`, and current
+  central-agency names such as `행정자치부` to `행정안전부` and
+  `기획재정부` to `재정경제부`.
 - Path components are NFC-normalized, slash-like separators are replaced with
   spaces, repeated whitespace is collapsed, and each stem is capped at 180 UTF-8
   bytes.

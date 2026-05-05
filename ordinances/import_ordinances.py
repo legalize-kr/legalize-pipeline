@@ -48,6 +48,14 @@ def _sort_key(entry: dict) -> tuple[str, int, str]:
     return date, id_key, entry["rel_path"]
 
 
+def _remove_stale_path(repo_dir: Path, rel_path: str) -> bool:
+    target = repo_dir / rel_path
+    if not target.exists():
+        return False
+    target.unlink()
+    return True
+
+
 def import_from_cache(
     repo_dir: Path = ORDINANCE_REPO,
     *,
@@ -69,6 +77,7 @@ def import_from_cache(
             rel_path, markdown = xml_to_markdown(raw, use_registry=True)
             entries.append({
                 "ordinance_id": ordinance_id,
+                "identity": str(detail["metadata"].get("자치법규ID") or ordinance_id),
                 "metadata": detail["metadata"],
                 "rel_path": rel_path,
                 "markdown": markdown,
@@ -79,10 +88,16 @@ def import_from_cache(
             logger.exception("Failed parsing ordinance ID=%s", ordinance_id)
             counters["errors"] += 1
 
+    latest_paths: dict[str, str] = {}
     for entry in sorted(entries, key=_sort_key):
         try:
             meta = entry["metadata"]
             rel_path = entry["rel_path"]
+            stale_paths = []
+            previous_path = latest_paths.get(entry["identity"])
+            if previous_path and previous_path != rel_path and _remove_stale_path(repo_dir, previous_path):
+                stale_paths.append(previous_path)
+            latest_paths[entry["identity"]] = rel_path
             target = repo_dir / rel_path
             target.parent.mkdir(parents=True, exist_ok=True)
             atomic_write_text(target, entry["markdown"])
@@ -96,6 +111,7 @@ def import_from_cache(
                     date,
                     entry["ordinance_id"],
                     skip_dedup=skip_dedup,
+                    stale_paths=stale_paths,
                 ):
                     counters["committed"] += 1
         except Exception:

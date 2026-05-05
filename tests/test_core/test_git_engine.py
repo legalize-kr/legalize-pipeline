@@ -84,5 +84,20 @@ def test_commit_with_historical_date_clamps_pre_epoch(tmp_path: Path):
     assert captured_envs[0]["GIT_AUTHOR_DATE"].startswith("1970-01-01")
 
 
+def test_commit_with_historical_date_allows_tracked_deletion(tmp_path: Path):
+    file_path = Path("old.md")
+    run_results = [
+        _make_run_result("old.md"),
+        _make_run_result(""),
+        _make_run_result("D old.md"),
+        _make_run_result(""),
+    ]
+
+    with patch("subprocess.run", side_effect=run_results):
+        result = git_engine.commit_with_historical_date(tmp_path, [file_path], "msg", "2024-01-01")
+
+    assert result is True
+
+
 def test_commit_with_historical_date_missing_file(tmp_path: Path):
     assert git_engine.commit_with_historical_date(tmp_path, [Path("missing.md")], "msg", "2024-01-01") is False

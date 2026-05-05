@@ -32,6 +32,15 @@ def file_has_changes(repo_dir: Path, file_paths: list[Path]) -> bool:
     return bool(_run_git(*args, cwd=repo_dir))
 
 
+def file_is_tracked(repo_dir: Path, file_path: Path) -> bool:
+    """Check whether a path is already tracked by Git."""
+    try:
+        _run_git("ls-files", "--error-unmatch", str(file_path), cwd=repo_dir)
+        return True
+    except RuntimeError:
+        return False
+
+
 def commit_exists(repo_dir: Path, grep_key: str) -> bool:
     """Check if a commit containing grep_key already exists."""
     try:
@@ -69,7 +78,11 @@ def commit_with_historical_date(
     """Stage and commit files with GIT_AUTHOR_DATE/GIT_COMMITTER_DATE set."""
     repo_dir = Path(repo_dir)
     rel_paths = _relative_paths(repo_dir, file_paths)
-    missing = [str(repo_dir / p) for p in rel_paths if not (repo_dir / p).exists()]
+    missing = [
+        str(repo_dir / p)
+        for p in rel_paths
+        if not (repo_dir / p).exists() and not file_is_tracked(repo_dir, p)
+    ]
     if missing:
         logger.error("File not found: %s", ", ".join(missing))
         return False
@@ -78,7 +91,7 @@ def commit_with_historical_date(
         logger.info("Commit already exists for %s, skipping", dedup_grep_key)
         return False
 
-    _run_git("add", *[str(p) for p in rel_paths], cwd=repo_dir)
+    _run_git("add", "--", *[str(p) for p in rel_paths], cwd=repo_dir)
     if not file_has_changes(repo_dir, rel_paths):
         logger.info("No changes for %s, skipping", ", ".join(str(p) for p in rel_paths))
         return False
