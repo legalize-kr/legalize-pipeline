@@ -8,13 +8,13 @@ from pathlib import Path
 
 import yaml
 
-from .config import KR_DIR, WORKSPACE_ROOT
+from .config import KR_DIR, LAW_REPO
 
 logger = logging.getLogger(__name__)
 
-METADATA_FILE = WORKSPACE_ROOT / "metadata.json"
-STATS_FILE = WORKSPACE_ROOT / "stats.json"
-ANOMALIES_FILE = WORKSPACE_ROOT / "anomalies.json"
+METADATA_FILE = LAW_REPO / "metadata.json"
+STATS_FILE = LAW_REPO / "stats.json"
+ANOMALIES_FILE = LAW_REPO / "anomalies.json"
 
 
 def classify_directories() -> dict:
@@ -47,10 +47,10 @@ def classify_directories() -> dict:
         )
 
         if has_child and not has_parent:
-            child_only_dirs.append(str(law_dir.relative_to(WORKSPACE_ROOT)))
+            child_only_dirs.append(str(law_dir.relative_to(LAW_REPO)))
 
         for st in hidden_stale:
-            quarantined_stale.append(str(st.relative_to(WORKSPACE_ROOT)))
+            quarantined_stale.append(str(st.relative_to(LAW_REPO)))
 
     return {
         "child_only_dirs": child_only_dirs,
@@ -106,7 +106,7 @@ def generate() -> dict:
             logger.warning(f"No 법령MST in {md_file}")
             continue
 
-        rel_path = str(md_file.relative_to(WORKSPACE_ROOT))
+        rel_path = str(md_file.relative_to(LAW_REPO))
 
         if mst in seen_paths:
             raise RuntimeError(
@@ -137,7 +137,7 @@ def count_law_commits() -> int:
     try:
         result = subprocess.run(
             ["git", "log", "--oneline", "--", "kr/"],
-            capture_output=True, text=True, cwd=WORKSPACE_ROOT,
+            capture_output=True, text=True, cwd=LAW_REPO,
         )
         if result.returncode == 0:
             return len(result.stdout.strip().splitlines())
@@ -167,7 +167,7 @@ def _count_missing_parent_with_child(child_only_dirs: list[str]) -> int:
     """Directories with 시행령/시행규칙 but no 법률.md at all."""
     missing = 0
     for rel in child_only_dirs:
-        law_dir = WORKSPACE_ROOT / rel
+        law_dir = LAW_REPO / rel
         if not law_dir.exists():
             continue
         names = {f.name for f in law_dir.iterdir() if f.is_file()}

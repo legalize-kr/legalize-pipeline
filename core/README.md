@@ -10,7 +10,12 @@
 ```python
 # 환경 변수
 LAW_OC              # 국가법령정보센터 OpenAPI 키 (필수)
-WORKSPACE_ROOT      # 법령 데이터 저장소 경로 (기본: 상위 디렉토리)
+WORKSPACE_ROOT      # 메타 워크스페이스 루트 (기본: 상위 디렉토리)
+LEGALIZE_CACHE_DIR  # 공유 캐시 루트 (기본: WORKSPACE_ROOT/.cache)
+LEGALIZE_KR_REPO    # 법령 데이터 저장소 (기본: WORKSPACE_ROOT/legalize-kr)
+PRECEDENT_KR_REPO   # 판례 데이터 저장소 (기본: WORKSPACE_ROOT/precedent-kr)
+ADMRULE_KR_REPO     # 행정규칙 데이터 저장소 (기본: WORKSPACE_ROOT/admrule-kr)
+ORDINANCE_KR_REPO   # 자치법규 데이터 저장소 (기본: WORKSPACE_ROOT/ordinance-kr)
 
 # 설정값
 REQUEST_DELAY_SECONDS = 0.2     # API 호출 간격
@@ -91,7 +96,7 @@ cached, fetched, errors = counter.snapshot()  # 스냅샷
 
 ```bash
 # 파이썬 코드에서만 import
-from core.config import WORKSPACE_ROOT, REQUEST_DELAY_SECONDS
+from core.config import CACHE_ROOT, LEGALIZE_KR_REPO, WORKSPACE_ROOT, REQUEST_DELAY_SECONDS
 from core.http import make_request
 from core.throttle import Throttle
 from core.atomic_io import atomic_write_text
@@ -107,5 +112,6 @@ from core.counter import Counter
 LAW_OC=your-openapi-key
 
 # 선택사항
-WORKSPACE_ROOT=/path/to/legalize-kr
+WORKSPACE_ROOT=/path/to/LEGALIZE-KR-WORKSPACE-ROOT
+LEGALIZE_CACHE_DIR=/path/to/cache
 ```

@@ -4,15 +4,18 @@ from pathlib import Path
 
 from core.config import (  # noqa: F401 — re-exported
     BACKOFF_BASE_SECONDS,
+    CACHE_ROOT,
     CONCURRENT_WORKERS,
+    LEGALIZE_KR_REPO,
     MAX_RETRIES,
     REQUEST_DELAY_SECONDS,
     WORKSPACE_ROOT,
 )
 
 # Image-specific paths
-KR_DIR = WORKSPACE_ROOT / "kr"
-IMAGE_CACHE_DIR = WORKSPACE_ROOT / ".cache" / "images"
+LAW_REPO = LEGALIZE_KR_REPO
+KR_DIR = LAW_REPO / "kr"
+IMAGE_CACHE_DIR = CACHE_ROOT / "images"
 MANIFEST_PATH = IMAGE_CACHE_DIR / "manifest.json"
 CHECKSUMS_PATH = IMAGE_CACHE_DIR / "checksums.json"
 

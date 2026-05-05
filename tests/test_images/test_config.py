@@ -2,7 +2,7 @@
 
 import pytest
 import images.config as cfg
-from core.config import WORKSPACE_ROOT
+from core.config import CACHE_ROOT, LEGALIZE_KR_REPO
 
 
 @pytest.fixture(autouse=True)
@@ -20,10 +20,10 @@ def restore_config():
 
 
 def test_default_paths():
-    assert cfg.IMAGE_CACHE_DIR == WORKSPACE_ROOT / ".cache" / "images"
+    assert cfg.IMAGE_CACHE_DIR == CACHE_ROOT / "images"
     assert cfg.MANIFEST_PATH == cfg.IMAGE_CACHE_DIR / "manifest.json"
     assert cfg.CHECKSUMS_PATH == cfg.IMAGE_CACHE_DIR / "checksums.json"
-    assert cfg.KR_DIR == WORKSPACE_ROOT / "kr"
+    assert cfg.KR_DIR == LEGALIZE_KR_REPO / "kr"
 
 
 def test_set_cache_dir(tmp_path):

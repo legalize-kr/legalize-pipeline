@@ -106,7 +106,12 @@ WORKSPACE_ROOT/
   .cache/
     detail/{MST}.xml              # 법령 상세 API 원본 XML
     history/{법령명}.json         # 법령별 개정 이력
-  .checkpoint.json                # 처리 상태 (processed_msts, last_update)
+    .checkpoint.json              # 처리 상태 (processed_msts, last_update)
+    .failed_msts.json             # 실패 ledger
+  legalize-kr/
+    kr/{법령명}/*.md              # 법령 Markdown
+    metadata.json
+    stats.json
 ```
 
 캐시 파일은 원자적 쓰기(tempfile → rename)로 저장되어 병렬 실행에 안전합니다.
@@ -170,7 +175,7 @@ WORKSPACE_ROOT/
 같은 법령의 중복 처리를 방지합니다:
 
 - **Git grep**: `git log --grep=법령MST:{id}` 검사
-- **Checkpoint**: `.checkpoint.json`의 `processed_msts` set 추적
+- **Checkpoint**: `.cache/.checkpoint.json`의 `processed_msts` set 추적
 - **Update 모드**: checkpoint만 사용 (skip_dedup=True)
 
 ## 환경 설정
@@ -180,11 +185,13 @@ WORKSPACE_ROOT/
 LAW_OC=your-openapi-key
 
 # 선택사항
-WORKSPACE_ROOT=/path/to/legalize-kr
+WORKSPACE_ROOT=/path/to/LEGALIZE-KR-WORKSPACE-ROOT
+LEGALIZE_CACHE_DIR=/path/to/cache
+LEGALIZE_KR_REPO=/path/to/legalize-kr
 ```
 
-> **참고**: 파이프라인은 `WORKSPACE_ROOT`(기본: 상위 디렉토리)를 법령 데이터 저장소로 사용합니다.
-> 다른 경로에 체크아웃한 경우 환경변수를 설정하세요.
+> **참고**: 파이프라인은 `WORKSPACE_ROOT`(기본: 상위 디렉토리)를 메타 워크스페이스 루트로 사용합니다.
+> 법령 저장소 기본값은 `WORKSPACE_ROOT/legalize-kr`, 공유 캐시 기본값은 `WORKSPACE_ROOT/.cache`입니다.
 
 ## API 엔드포인트
 

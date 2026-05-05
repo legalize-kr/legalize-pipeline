@@ -13,7 +13,7 @@ import logging
 
 from . import cache
 from .api_client import get_law_detail
-from .config import BOT_AUTHOR, WORKSPACE_ROOT
+from .config import BOT_AUTHOR, LAW_REPO
 from .converter import (
     entry_sort_key,
     format_date,
@@ -28,11 +28,11 @@ logger = logging.getLogger(__name__)
 
 INFRA_AUTHOR = BOT_AUTHOR
 
-# Files/dirs to include in the infra commit (relative to WORKSPACE_ROOT)
+# Files/dirs to include in the infra commit (relative to LAW_REPO)
 INFRA_PATHS = [
     ".github",
     ".gitignore",
-    "CLAUDE.md",
+    "AGENTS.md",
     "KNOWN_ISSUES.md",
     "LICENSE",
     "README.md",
@@ -50,7 +50,7 @@ def create_orphan_branch(branch_name: str = "rebuild") -> None:
 def commit_infra(dry_run: bool = False, infra_date: str | None = None) -> str | None:
     """Commit all infrastructure files as a single commit."""
     for path in INFRA_PATHS:
-        abs_path = WORKSPACE_ROOT / path
+        abs_path = LAW_REPO / path
         if abs_path.exists():
             _run_git("add", path)
 
@@ -158,7 +158,7 @@ def rebuild_law_commits(entries: list[tuple[str, dict]], dry_run: bool = False) 
             continue
 
         try:
-            abs_path = WORKSPACE_ROOT / file_path
+            abs_path = LAW_REPO / file_path
             abs_path.parent.mkdir(parents=True, exist_ok=True)
 
             content = law_to_markdown(detail)
@@ -187,7 +187,7 @@ def rebuild_law_commits(entries: list[tuple[str, dict]], dry_run: bool = False) 
         except ValueError as e:  # empty body (P1)
             from .failures import log_failure, mark_failed_and_quarantine
             log_failure("rebuild", str(mst), law_name, e)
-            path = WORKSPACE_ROOT / file_path
+            path = LAW_REPO / file_path
             mark_failed_and_quarantine(
                 mst=str(mst), reason="empty_body", detail=str(e),
                 path=path, step="rebuild", law_name=law_name,

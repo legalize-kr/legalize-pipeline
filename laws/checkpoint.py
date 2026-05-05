@@ -4,11 +4,11 @@ import json
 import logging
 import threading
 
-from .config import WORKSPACE_ROOT
+from .config import CACHE_ROOT
 
 logger = logging.getLogger(__name__)
 
-CHECKPOINT_FILE = WORKSPACE_ROOT / ".checkpoint.json"
+CHECKPOINT_FILE = CACHE_ROOT / ".checkpoint.json"
 _LOCK = threading.Lock()
 
 
@@ -25,6 +25,7 @@ def load() -> dict:
 
 def _write(data: dict) -> None:
     data.setdefault("schema_version", 2)
+    CHECKPOINT_FILE.parent.mkdir(parents=True, exist_ok=True)
     CHECKPOINT_FILE.write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
         encoding="utf-8",

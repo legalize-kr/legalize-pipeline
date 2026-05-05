@@ -13,7 +13,7 @@ from images.replace import approve_images, replace_images
 @pytest.fixture(autouse=True)
 def patch_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(cfg, "MANIFEST_PATH", tmp_path / "manifest.json")
-    monkeypatch.setattr(replace_mod, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(cfg, "KR_DIR", tmp_path / "kr")
 
 
 def _entry(image_id: str, doc_path: str, line: int, tag: str, status: str = "converted", text: str = "") -> ImageEntry:

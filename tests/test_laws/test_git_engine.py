@@ -7,7 +7,7 @@ import laws.git_engine as git_engine
 
 
 def test_commit_law_delegates_to_core(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(git_engine, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(git_engine, "LAW_REPO", tmp_path)
     with patch("laws.git_engine.commit_with_historical_date", return_value=True) as mock_commit:
         result = git_engine.commit_law("kr/민법/법률.md", "msg", "2024-01-01", "253527")
 
@@ -23,7 +23,7 @@ def test_commit_law_delegates_to_core(tmp_path: Path, monkeypatch):
 
 
 def test_commit_law_skip_dedup(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(git_engine, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(git_engine, "LAW_REPO", tmp_path)
     with patch("laws.git_engine.commit_with_historical_date", return_value=False) as mock_commit:
         result = git_engine.commit_law("kr/민법/법률.md", "msg", "2024-01-01", "253527", skip_dedup=True)
 

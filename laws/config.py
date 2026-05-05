@@ -3,9 +3,11 @@
 from core.config import (  # noqa: F401 — re-exported
     BACKOFF_BASE_SECONDS,
     BOT_AUTHOR,
+    CACHE_ROOT,
     CONCURRENT_WORKERS,
     LAW_API_BASE,
     LAW_API_KEY,
+    LEGALIZE_KR_REPO,
     MAX_RETRIES,
     PROJECT_ROOT,
     REQUEST_DELAY_SECONDS,
@@ -13,7 +15,8 @@ from core.config import (  # noqa: F401 — re-exported
 )
 
 # Laws-specific paths
-KR_DIR = WORKSPACE_ROOT / "kr"
+LAW_REPO = LEGALIZE_KR_REPO
+KR_DIR = LAW_REPO / "kr"
 
 # Suffixes that indicate a child law (order matters: longest first)
 CHILD_SUFFIXES = [

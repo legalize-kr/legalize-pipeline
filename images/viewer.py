@@ -17,7 +17,6 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from . import config
-from .config import WORKSPACE_ROOT
 from .manifest import load_manifest
 
 logger = logging.getLogger(__name__)
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def _get_context(doc_path: str, line_number: int, lines: int = 3) -> str:
     """Read lines around the img tag in the source document."""
-    full_path = WORKSPACE_ROOT / doc_path
+    full_path = config.KR_DIR.parent / doc_path
     if not full_path.exists():
         return ""
     try:

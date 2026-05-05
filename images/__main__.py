@@ -24,12 +24,12 @@ def main():
     parser.add_argument(
         "--cache-dir",
         type=Path,
-        help="Override image cache directory (default: WORKSPACE_ROOT/.cache/images)",
+        help="Override image cache directory (default: LEGALIZE_CACHE_DIR/images or WORKSPACE_ROOT/.cache/images)",
     )
     parser.add_argument(
         "--kr-dir",
         type=Path,
-        help="Override markdown source directory (default: WORKSPACE_ROOT/kr)",
+        help="Override markdown source directory (default: LEGALIZE_KR_REPO/kr or WORKSPACE_ROOT/legalize-kr/kr)",
     )
     parser.add_argument(
         "--output-dir",

@@ -18,14 +18,14 @@ from urllib.parse import urlparse
 
 import yaml
 
-from .config import CHILD_SUFFIXES, KR_DIR, WORKSPACE_ROOT
+from .config import CHILD_SUFFIXES, KR_DIR, LAW_REPO
 from .converter import normalize_law_name
 
 logger = logging.getLogger(__name__)
 
 REQUIRED_FIELDS = ["제목", "법령MST", "법령구분", "법령구분코드", "소관부처", "공포일자", "상태", "첨부파일"]
 
-METADATA_FILE = WORKSPACE_ROOT / "metadata.json"
+METADATA_FILE = LAW_REPO / "metadata.json"
 
 
 def _is_law_go_kr_url(url: str) -> bool:
@@ -118,14 +118,14 @@ def validate_metadata_json() -> list[str]:
 
     # Check each entry has a corresponding file
     for mst, info in metadata.items():
-        file_path = WORKSPACE_ROOT / info.get("path", "")
+        file_path = LAW_REPO / info.get("path", "")
         if not file_path.exists():
             errors.append(f"metadata.json references missing file: {info.get('path')}")
 
     # Check for files not in metadata (by MST in frontmatter)
     known_paths = {info.get("path") for info in metadata.values()}
     for md_file in KR_DIR.rglob("*.md"):
-        rel = str(md_file.relative_to(WORKSPACE_ROOT))
+        rel = str(md_file.relative_to(LAW_REPO))
         if rel not in known_paths:
             errors.append(f"File not in metadata.json: {rel}")
 
@@ -142,7 +142,7 @@ def main():
         errors = validate_frontmatter(md_file)
         files_checked += 1
         if errors:
-            rel_path = md_file.relative_to(WORKSPACE_ROOT)
+            rel_path = md_file.relative_to(LAW_REPO)
             for err in errors:
                 logger.error(f"{rel_path}: {err}")
             total_errors += len(errors)

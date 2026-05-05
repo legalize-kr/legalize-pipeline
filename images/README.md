@@ -40,8 +40,8 @@ python -m images [전역 옵션] <서브커맨드> [서브커맨드 옵션]
 
 | 옵션 | 설명 | 기본값 |
 |------|------|--------|
-| `--cache-dir DIR` | 이미지 캐시 디렉토리 | `WORKSPACE_ROOT/.cache/images` |
-| `--kr-dir DIR` | 법령 문서(*.md) 소스 디렉토리 | `WORKSPACE_ROOT/kr` |
+| `--cache-dir DIR` | 이미지 캐시 디렉토리 | `LEGALIZE_CACHE_DIR/images` 또는 `WORKSPACE_ROOT/.cache/images` |
+| `--kr-dir DIR` | 법령 문서(*.md) 소스 디렉토리 | `LEGALIZE_KR_REPO/kr` 또는 `WORKSPACE_ROOT/legalize-kr/kr` |
 | `--output-dir DIR` | 리포트 등 출력 디렉토리 | (stdout) |
 
 ### 서브커맨드

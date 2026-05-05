@@ -1,7 +1,7 @@
 """Migrate existing fragmented 시행규칙 files to canonical paths.
 
 Usage:
-    cd /opt/data/legalize-kr/legalize-pipeline
+    cd LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
     python -m laws.migrate_ministry_paths           # dry-run (default)
     python -m laws.migrate_ministry_paths --execute # apply changes
 
@@ -22,7 +22,7 @@ from pathlib import Path
 
 import yaml
 
-from .config import KR_DIR, WORKSPACE_ROOT
+from .config import KR_DIR, LAW_REPO
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +91,8 @@ def _lossy_check(winner: Path, loser: Path, ratio: float = 0.3) -> bool:
 
 
 def _canonical_path(group: str, filename: str) -> Path:
-    """Unqualified canonical path relative to WORKSPACE_ROOT."""
-    return WORKSPACE_ROOT / "kr" / group / f"{filename}.md"
+    """Unqualified canonical path relative to the law repository root."""
+    return LAW_REPO / "kr" / group / f"{filename}.md"
 
 
 def _parse_group_filename(rel_path: str) -> tuple[str, str]:
@@ -152,7 +152,7 @@ def scan(kr_root: Path = KR_DIR) -> MigrationReport:
         loser_paths = [p for p, _ in dir_entries[1:]]
 
         # Determine canonical (unqualified) path
-        group, base = _parse_group_filename(winner_path.relative_to(WORKSPACE_ROOT).as_posix())
+        group, base = _parse_group_filename(winner_path.relative_to(LAW_REPO).as_posix())
         canonical = _canonical_path(group, base)
 
         needs_rename = winner_path != canonical
@@ -190,18 +190,18 @@ def report_dry_run(report: MigrationReport) -> None:
         print("[ 수동 검토 필요 (REQUIRES_MANUAL_REVIEW) ]")
         for op in manual:
             print(f"  법령ID {op.law_id}:")
-            print(f"    winner  : {op.winner.relative_to(WORKSPACE_ROOT)}")
+            print(f"    winner  : {op.winner.relative_to(LAW_REPO)}")
             for lp in op.losers:
-                print(f"    loser   : {lp.relative_to(WORKSPACE_ROOT)}")
+                print(f"    loser   : {lp.relative_to(LAW_REPO)}")
         print()
 
     if consolidate:
         print("[ 자동 통합 예정 ]")
         for op in consolidate[:20]:
             if op.needs_rename:
-                print(f"  {op.winner.relative_to(WORKSPACE_ROOT)} -> {op.canonical.relative_to(WORKSPACE_ROOT)}")
+                print(f"  {op.winner.relative_to(LAW_REPO)} -> {op.canonical.relative_to(LAW_REPO)}")
             else:
-                print(f"  {op.canonical.relative_to(WORKSPACE_ROOT)} (loser {len(op.losers)}개 삭제)")
+                print(f"  {op.canonical.relative_to(LAW_REPO)} (loser {len(op.losers)}개 삭제)")
         if len(consolidate) > 20:
             print(f"  ... 외 {len(consolidate)-20}건")
         print()
@@ -211,7 +211,7 @@ def report_dry_run(report: MigrationReport) -> None:
         for law_id, paths in report.cross_dir_cases[:10]:
             print(f"  법령ID {law_id}:")
             for p in paths:
-                print(f"    {p.relative_to(WORKSPACE_ROOT)}")
+                print(f"    {p.relative_to(LAW_REPO)}")
         print()
 
     print("실행하려면: python -m laws.migrate_ministry_paths --execute")
@@ -222,7 +222,7 @@ def apply_ops(report: MigrationReport, force_lossy: bool = False) -> None:
     # Verify no staged/modified tracked files (untracked files are OK)
     result = subprocess.run(
         ["git", "status", "--porcelain"],
-        cwd=WORKSPACE_ROOT,
+        cwd=LAW_REPO,
         capture_output=True,
         text=True,
     )
@@ -250,9 +250,9 @@ def apply_ops(report: MigrationReport, force_lossy: bool = False) -> None:
                 op.canonical.parent.mkdir(parents=True, exist_ok=True)
                 subprocess.run(
                     ["git", "mv", "-f",
-                     str(op.winner.relative_to(WORKSPACE_ROOT)),
-                     str(op.canonical.relative_to(WORKSPACE_ROOT))],
-                    cwd=WORKSPACE_ROOT, check=True, capture_output=True,
+                     str(op.winner.relative_to(LAW_REPO)),
+                     str(op.canonical.relative_to(LAW_REPO))],
+                    cwd=LAW_REPO, check=True, capture_output=True,
                 )
                 renamed += 1
                 logger.info(f"  renamed: {op.winner.name} -> {op.canonical.name}")
@@ -263,11 +263,11 @@ def apply_ops(report: MigrationReport, force_lossy: bool = False) -> None:
                     continue
                 if lp.exists():
                     subprocess.run(
-                        ["git", "rm", "--force", str(lp.relative_to(WORKSPACE_ROOT))],
-                        cwd=WORKSPACE_ROOT, check=True, capture_output=True,
+                        ["git", "rm", "--force", str(lp.relative_to(LAW_REPO))],
+                        cwd=LAW_REPO, check=True, capture_output=True,
                     )
                     removed += 1
-                    logger.info(f"  removed: {lp.relative_to(WORKSPACE_ROOT)}")
+                    logger.info(f"  removed: {lp.relative_to(LAW_REPO)}")
 
         except Exception as e:
             logger.error(f"  Failed for 법령ID {op.law_id}: {e}")
@@ -278,7 +278,7 @@ def apply_ops(report: MigrationReport, force_lossy: bool = False) -> None:
         msg = f"migration: 부처명 정규화 — {len(to_process)}건 법령 경로 통합 (rename={renamed}, rm={removed})"
         subprocess.run(
             ["git", "commit", "-m", msg],
-            cwd=WORKSPACE_ROOT, check=True,
+            cwd=LAW_REPO, check=True,
         )
         logger.info(f"\n완료: {renamed}건 이동, {removed}건 삭제 → 커밋 완료")
     else:

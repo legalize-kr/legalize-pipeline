@@ -12,6 +12,12 @@ concurrency:
   group: workspace-cache
   cancel-in-progress: false
 
+env:
+  WORKSPACE_ROOT: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT
+  LEGALIZE_CACHE_DIR: ${{ secrets.LEGALIZE_CACHE_DIR }}
+  LEGALIZE_KR_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-kr
+  PIPELINE_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
+
 jobs:
   refresh:
     runs-on: self-hosted
@@ -24,21 +30,18 @@ jobs:
           repository: legalize-kr/legalize-kr
           token: ${{ secrets.REPO_PAT }}
           fetch-depth: 0
-          path: workspace
-
-      - name: Clean previous pipeline checkout
-        run: rm -rf workspace/pipeline
+          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-kr
 
       - name: Checkout pipeline
         uses: actions/checkout@v4
         with:
-          path: workspace/pipeline
+          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
 
       - name: Setup Python venv
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          pip install -r workspace/pipeline/requirements.txt
+          python3 -m venv "$WORKSPACE_ROOT/.venv"
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
+          pip install -r "$PIPELINE_REPO/requirements.txt"
 
       - name: Disk preflight
         run: |
@@ -50,16 +53,21 @@ jobs:
 
       - name: Link persistent cache
         run: |
-          mkdir -p /opt/data/legalize-cache
-          ln -sfn /opt/data/legalize-cache workspace/.cache
+          if [ -z "${LEGALIZE_CACHE_DIR:-}" ]; then
+            echo "::error::LEGALIZE_CACHE_DIR is not configured"
+            exit 1
+          fi
+          mkdir -p "$WORKSPACE_ROOT"
+          mkdir -p "$LEGALIZE_CACHE_DIR"
+          rm -rf "$WORKSPACE_ROOT/.cache"
+          ln -s "$LEGALIZE_CACHE_DIR" "$WORKSPACE_ROOT/.cache"
 
       - name: Fetch laws cache
-        working-directory: workspace/pipeline
+        working-directory: ${{ env.PIPELINE_REPO }}
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
-          WORKSPACE_ROOT: ${{ github.workspace }}/workspace
         run: |
-          . ../../.venv/bin/activate
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
           # --refresh-history: lsHistory 캐시를 우회하고 재조회해
           # 타법개정 등 lawSearch.do가 반환하지 않는 MST까지 포괄 수집
           # (issue #31 재발 방지). 추가 API 호출은 법령명 수만큼이며,
@@ -67,36 +75,33 @@ jobs:
           python -m laws.fetch_cache --refresh-history
 
       - name: Fetch precedents cache
-        working-directory: workspace/pipeline
+        working-directory: ${{ env.PIPELINE_REPO }}
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
-          WORKSPACE_ROOT: ${{ github.workspace }}/workspace
         run: |
-          . ../../.venv/bin/activate
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
           python -m precedents.fetch_cache
 
       - name: Fetch administrative rules cache
-        working-directory: workspace/pipeline
+        working-directory: ${{ env.PIPELINE_REPO }}
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
-          WORKSPACE_ROOT: ${{ github.workspace }}/workspace
         run: |
-          . ../../.venv/bin/activate
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
           python -m admrules.fetch_cache
 
       - name: Fetch ordinances cache
-        working-directory: workspace/pipeline
+        working-directory: ${{ env.PIPELINE_REPO }}
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
           LAW_API_DAILY_BUDGET: 300000
-          WORKSPACE_ROOT: ${{ github.workspace }}/workspace
         run: |
-          . ../../.venv/bin/activate
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
           python -m ordinances.fetch_cache
 
       - name: Cache size summary
-        working-directory: workspace/pipeline
-        run: du -sh ../.cache/* | tee -a "$GITHUB_STEP_SUMMARY"
+        working-directory: ${{ env.PIPELINE_REPO }}
+        run: du -sh "$LEGALIZE_CACHE_DIR"/* | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Download previous baseline artifact
         uses: actions/download-artifact@v4
@@ -109,7 +114,7 @@ jobs:
           # Note: legitimate count drops can come from law repeals (detail/), _no_result_ids.txt pruning (precedent/), or upstream cache invalidation. 1% tolerance band absorbs these.
           pass=true
           for subdir in detail history precedent images admrule ordinance; do
-            new=$(find workspace/.cache/$subdir -type f 2>/dev/null | wc -l)
+            new=$(find "$LEGALIZE_CACHE_DIR/$subdir" -type f 2>/dev/null | wc -l)
             echo "Cache $subdir: $new files"
             if [ -f cache-baseline.json ]; then
               baseline=$(python3 -c "import json,sys; d=json.load(open('cache-baseline.json')); print(d.get('$subdir', 0))")
@@ -123,11 +128,11 @@ jobs:
             fi
           done
           python3 - <<'PYTHON_EOF'
-          import json, subprocess, pathlib
+          import json, os, subprocess, pathlib
           counts = {}
           for subdir in ["detail", "history", "precedent", "images", "admrule", "ordinance"]:
               result = subprocess.run(
-                  ["find", f"workspace/.cache/{subdir}", "-type", "f"],
+                  ["find", f"{os.environ['LEGALIZE_CACHE_DIR']}/{subdir}", "-type", "f"],
                   capture_output=True, text=True
               )
               counts[subdir] = len([l for l in result.stdout.splitlines() if l])

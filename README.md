@@ -143,33 +143,39 @@ python -m images report
 ## 캐시 구조
 
 ```
-WORKSPACE_ROOT/
-  kr/{법령명}/
-    법률.md                       # 법령 Markdown 파일
-    시행령.md
-    시행규칙.md
-  metadata.json                   # 법령 인덱스 (자동 생성)
-  stats.json                      # 통계 (자동 생성)
+LEGALIZE-KR-WORKSPACE-ROOT/
+  legalize-pipeline/              # 이 저장소
+  legalize-kr/
+    kr/{법령명}/                  # 법령 Markdown 파일
+    metadata.json                 # 법령 인덱스 (자동 생성)
+    stats.json                    # 통계 (자동 생성)
+  precedent-kr/                   # 판례 Markdown 저장소
+  admrule-kr/                     # 행정규칙 Markdown 저장소
+  ordinance-kr/                   # 자치법규 Markdown 저장소
+  legalize-web/                   # 웹사이트 저장소
   .cache/
     detail/{MST}.xml              # 법령 상세 API XML
     history/{법령명}.json         # 법령 개정 이력
     precedent/{판례일련번호}.xml  # 판례 상세 API XML
+    admrule/{행정규칙일련번호}.xml
+    ordinance/{자치법규ID}.xml
     images/                       # 이미지 캐시
-  .checkpoint.json                # 처리 상태
+    .checkpoint.json              # 법령 처리 상태
+    .failed_msts.json             # 법령 실패 ledger
 ```
 
-> **참고**: 파이프라인은 `WORKSPACE_ROOT` 환경변수(기본: 상위 디렉토리)를 법령 데이터 저장소로 사용합니다.
-> 다른 경로에 체크아웃한 경우 환경변수를 설정하세요.
+> **참고**: `WORKSPACE_ROOT`는 메타 워크스페이스 루트입니다. 법령 저장소는
+> 기본적으로 `WORKSPACE_ROOT/legalize-kr`, 공유 캐시는 `WORKSPACE_ROOT/.cache`를
+> 사용합니다. CI에서는 `LEGALIZE_CACHE_DIR` secret으로 주입된 영속 캐시 경로를
+> `WORKSPACE_ROOT/.cache`에 심볼릭 링크합니다.
 
 ## 캐시 다운로드
 
 사전 수집된 캐시 데이터는 [`legalize-kr/legalize-kr` 릴리즈 페이지](https://github.com/legalize-kr/legalize-kr/releases)에서 다운로드할 수 있습니다:
 
 ```bash
-# 법령 데이터 저장소
-git clone https://github.com/legalize-kr/legalize-kr.git
-
-cd legalize-kr
+# 메타 워크스페이스 루트에서
+git clone https://github.com/legalize-kr/legalize-kr.git legalize-kr
 
 # 캐시 압축 해제
 unzip legalize-kr-cache.zip
@@ -179,7 +185,7 @@ unzip legalize-kr-cache.zip
 그 후 이 저장소를 체크아웃:
 
 ```bash
-git clone https://github.com/legalize-kr/legalize-pipeline.git pipeline
+git clone https://github.com/legalize-kr/legalize-pipeline.git legalize-pipeline
 ```
 
 ## Markdown 변환 규칙
@@ -221,7 +227,7 @@ Markdown 변환 규칙:
 같은 법령이 여러 번 처리되는 것을 방지합니다:
 
 - **Git grep**: `git log --grep=법령MST:{id}` 검사
-- **Checkpoint**: `.checkpoint.json` 추적
+- **Checkpoint**: `.cache/.checkpoint.json` 추적
 - **Update 모드**: checkpoint만 사용
 
 ## 병렬 처리
@@ -238,7 +244,12 @@ Markdown 변환 규칙:
 LAW_OC=your-openapi-key
 
 # 선택사항
-WORKSPACE_ROOT=/path/to/legalize-kr
+WORKSPACE_ROOT=/path/to/LEGALIZE-KR-WORKSPACE-ROOT
+LEGALIZE_CACHE_DIR=/path/to/cache
+LEGALIZE_KR_REPO=/path/to/legalize-kr
+PRECEDENT_KR_REPO=/path/to/precedent-kr
+ADMRULE_KR_REPO=/path/to/admrule-kr
+ORDINANCE_KR_REPO=/path/to/ordinance-kr
 ```
 
 ## CI/CD

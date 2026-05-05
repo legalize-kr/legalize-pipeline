@@ -41,7 +41,7 @@ unique key 입니다.
 ## Preflight 측정 (필수 사전 게이트)
 
 ```bash
-WORKSPACE_ROOT=/path/to/repo \
+WORKSPACE_ROOT=/path/to/LEGALIZE-KR-WORKSPACE-ROOT \
   python -m precedents.preflight_filename_audit \
     --report .omc/plans/preflight-report.json
 ```
@@ -51,7 +51,7 @@ WORKSPACE_ROOT=/path/to/repo \
 `cargo test --test oracle` 입력으로 사용되는 oracle 도 함께 생성합니다:
 
 ```bash
-WORKSPACE_ROOT=/path/to/repo \
+WORKSPACE_ROOT=/path/to/LEGALIZE-KR-WORKSPACE-ROOT \
   python -m precedents.dump_oracle --output /tmp/oracle.jsonl
 ```
 
@@ -92,6 +92,8 @@ WORKSPACE_ROOT/
     precedent/
       {판례일련번호}.xml        # 판례 상세 API 원본 XML
       precedent_ids.json        # 수집된 판례 ID 목록 (collected_at, total, ids)
+  precedent-kr/
+    {사건종류}/{법원등급}/*.md # 판례 Markdown
 ```
 
 캐시 파일은 원자적 쓰기(tempfile → rename)로 저장되어 병렬 실행에 안전합니다.
@@ -110,7 +112,9 @@ WORKSPACE_ROOT/
 LAW_OC=your-openapi-key
 
 # 선택사항
-WORKSPACE_ROOT=/path/to/legalize-kr
+WORKSPACE_ROOT=/path/to/LEGALIZE-KR-WORKSPACE-ROOT
+LEGALIZE_CACHE_DIR=/path/to/cache
+PRECEDENT_KR_REPO=/path/to/precedent-kr
 ```
 
 ## 병렬 처리

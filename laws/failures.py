@@ -11,11 +11,11 @@ import threading
 import time
 from pathlib import Path
 
-from .config import WORKSPACE_ROOT
+from .config import CACHE_ROOT
 
 logger = logging.getLogger(__name__)
 
-FAILED_FILE = WORKSPACE_ROOT / ".failed_msts.json"
+FAILED_FILE = CACHE_ROOT / ".failed_msts.json"
 
 _LOCK = threading.Lock()
 
@@ -42,6 +42,7 @@ def _load() -> dict:
 
 
 def _write(data: dict) -> None:
+    FAILED_FILE.parent.mkdir(parents=True, exist_ok=True)
     FAILED_FILE.write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
         encoding="utf-8",

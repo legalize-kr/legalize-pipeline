@@ -1,4 +1,4 @@
-# legalize-pipeline — Project Guidelines
+# legalize-pipeline — Agent Guidelines
 
 ## Repository
 
@@ -16,6 +16,8 @@
 | `legalize-kr/legalize-web` | 웹사이트 (`legalize.kr`, GitHub Pages) |
 | `legalize-kr/compiler` | rebuild용 네이티브 컴파일러 (Rust). `full-laws-import.yml`이 릴리즈 바이너리가 있으면 `laws.rebuild`보다 먼저 사용하고, 없을 때만 Python `rebuild.py`로 폴백 |
 | `legalize-kr/precedent-kr` | 판례 데이터 (`{사건종류}/{법원등급}/{법원명}_{선고일자}_{사건번호}.md`, force-push 가능) |
+| `legalize-kr/admrule-kr` | 행정규칙 데이터 (`{기관경로...}/{행정규칙종류}/{행정규칙명}/본문.md`, force-push 가능) |
+| `legalize-kr/ordinance-kr` | 자치법규 데이터 (`{광역}/{기초}/{자치법규종류}/{자치법규명}/본문.md`, force-push 가능) |
 
 ## Directory Structure
 
@@ -54,19 +56,32 @@ precedents/            # 판례 파이프라인 (python -m precedents.fetch_cach
 
 ### 런타임 워크스페이스
 
-파이프라인은 `WORKSPACE_ROOT` 환경변수(기본값: 상위 디렉토리)를 법령 데이터 저장소 경로로 사용합니다.
-CI에서는 `workspace/` 아래에 데이터 저장소를 체크아웃하고, `workspace/pipeline/`에 이 저장소를 배치합니다.
+파이프라인은 `WORKSPACE_ROOT` 환경변수(기본값: 상위 디렉토리)를 메타 워크스페이스 루트로 사용합니다.
+데이터 저장소들은 이 루트의 하위 디렉토리이며, 공유 캐시는 `WORKSPACE_ROOT/.cache`입니다.
+CI에서는 `LEGALIZE-KR-WORKSPACE-ROOT/` 아래에 로컬과 같은 sibling checkout을 구성하고,
+영속 캐시 경로는 `LEGALIZE_CACHE_DIR` secret으로 주입해 `WORKSPACE_ROOT/.cache`에 심볼릭 링크합니다.
 
 ```
-{WORKSPACE_ROOT}/              # legalize-kr/legalize-kr 체크아웃
-  kr/{법령명}/                 # 법령 Markdown 파일
-  metadata.json                # 법령 인덱스 (자동 생성)
-  stats.json                   # 통계 (자동 생성 → legalize-web으로 복사)
-  .cache/detail/{MST}.xml              # 법령 API 상세 응답 캐시
-  .cache/history/{법령명}.json          # 법령 개정 이력 캐시
-  .cache/precedent/{판례일련번호}.xml   # 판례 API 상세 응답 캐시
-  .cache/precedent/precedent_ids.json  # 수집된 판례 ID 목록 (collected_at, total, ids)
-  .checkpoint.json                     # 법령 처리 상태
+{WORKSPACE_ROOT}/
+  legalize-pipeline/                    # 이 저장소
+  legalize-kr/                          # 법령 데이터 저장소
+    kr/{법령명}/
+    metadata.json
+    stats.json                          # legalize-web으로 복사
+  precedent-kr/
+  admrule-kr/
+  ordinance-kr/
+  legalize-web/
+  compiler/
+  .cache/
+    detail/{MST}.xml                    # 법령 API 상세 응답 캐시
+    history/{법령명}.json                # 법령 개정 이력 캐시
+    precedent/{판례일련번호}.xml
+    precedent/precedent_ids.json
+    admrule/{행정규칙일련번호}.xml
+    ordinance/{자치법규ID}.xml
+    .checkpoint.json                    # 법령 처리 상태
+    .failed_msts.json                   # 법령 실패 ledger
 ```
 
 ## Pipeline Architecture
@@ -125,7 +140,12 @@ precedent-kr/{사건종류}/{법원등급}/{법원명}_{선고일자}_{사건번
 | 변수 | 용도 | 기본값 |
 |---|---|---|
 | `LAW_OC` | 국가법령정보센터 OpenAPI 키 | (필수) |
-| `WORKSPACE_ROOT` | 법령 데이터 저장소 경로 | 상위 디렉토리 |
+| `WORKSPACE_ROOT` | 메타 워크스페이스 루트 | 상위 디렉토리 |
+| `LEGALIZE_CACHE_DIR` | 공유 캐시 루트 | `WORKSPACE_ROOT/.cache` |
+| `LEGALIZE_KR_REPO` | 법령 데이터 저장소 | `WORKSPACE_ROOT/legalize-kr` |
+| `PRECEDENT_KR_REPO` | 판례 데이터 저장소 | `WORKSPACE_ROOT/precedent-kr` |
+| `ADMRULE_KR_REPO` | 행정규칙 데이터 저장소 | `WORKSPACE_ROOT/admrule-kr` |
+| `ORDINANCE_KR_REPO` | 자치법규 데이터 저장소 | `WORKSPACE_ROOT/ordinance-kr` |
 
 ### core/config.py 주요 설정
 
@@ -138,13 +158,14 @@ precedent-kr/{사건종류}/{법원등급}/{법원명}_{선고일자}_{사건번
 
 ### daily-laws-update.yml (매일 13:00 KST)
 
-1. `legalize-kr/legalize-kr` → `workspace/`
-2. `legalize-kr/legalize-pipeline` → `workspace/pipeline/`
-3. `legalize-kr/legalize-web` → `docs-repo/`
-4. `python -m laws.update` 실행 (7일 lookback)
-5. `python -m laws.validate` 실행
-6. 데이터 저장소 push
-7. `stats.json` → `docs-repo/` 복사 및 push
+1. `legalize-kr/legalize-kr` → `LEGALIZE-KR-WORKSPACE-ROOT/legalize-kr/`
+2. `legalize-kr/legalize-pipeline` → `LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline/`
+3. `legalize-kr/legalize-web` → `LEGALIZE-KR-WORKSPACE-ROOT/legalize-web/`
+4. `LEGALIZE_CACHE_DIR` secret으로 주입된 영속 캐시 → `LEGALIZE-KR-WORKSPACE-ROOT/.cache` 심볼릭 링크
+5. `python -m laws.update` 실행 (7일 lookback)
+6. `python -m laws.validate` 실행
+7. 데이터 저장소 push
+8. `stats.json` → `legalize-web/` 복사 및 push
 
 ### full-laws-import.yml (수동 실행)
 
@@ -222,7 +243,7 @@ python -m laws.migrate_ministry_paths --execute --force-merge-lossy
 ### 중복 방지
 
 - 커밋 메시지의 `법령MST:` 로 `git log --grep` 검사 (laws/git_engine.py)
-- `.checkpoint.json`의 `processed_msts` set (laws/checkpoint.py)
+- `.cache/.checkpoint.json`의 `processed_msts` set (laws/checkpoint.py)
 - `laws/update.py`는 checkpoint만 사용 (skip_dedup=True)
 
 ### 캐시 안전성
@@ -327,7 +348,7 @@ python -m precedents.fetch_cache --workers 3
 
 - `::error::` 출력에서 `(mst, reason)` 튜플을 읽습니다.
 - 기존 MST의 reason이 변경되면 근본원인 진단 필요 (의미 변경).
-- 수정 후: `cp workspace/.failed_msts.json workspace/pipeline/.failure-baseline.json` → pipeline 저장소에 커밋 (legalize-kr 아님).
+- 수정 후: `cp "$LEGALIZE_CACHE_DIR/.failed_msts.json" legalize-pipeline/.failure-baseline.json` → pipeline 저장소에 커밋 (legalize-kr 아님).
 
 ### 일시적 경고 (::warning::, api_error 24h 내)
 
@@ -348,5 +369,5 @@ python -m precedents.fetch_cache --workers 3
 - **기존 실패 분류 후 baseline 갱신**: 현재 실패가 모두 예상 범주에 속함을 확인한 후에만 갱신.
 - **파일 위치**: `.failure-baseline.json` → `legalize-pipeline/`; `known_empty_history.yaml` → `legalize-pipeline/laws/`.
 - **hash-truncated stem 원래 이름 복구**: `.omc/logs/history-recovery-{date}.txt` 또는 `laws.api_client.search_laws(stem_prefix)`.
-- **초기 baseline 시드**: 청정 복구 후 `python -m laws.update --days 7 --dry-run` → `.failed_msts.json` 검사 → `cp` → commit.
+- **초기 baseline 시드**: 청정 복구 후 `python -m laws.update --days 7 --dry-run` → `$LEGALIZE_CACHE_DIR/.failed_msts.json` 검사 → `cp` → commit.
 - **금지 사항**: 레드 실행에서 baseline 갱신 금지.

@@ -12,10 +12,12 @@ from laws.validate import validate_frontmatter
 def patch_dirs(tmp_path: Path, monkeypatch):
     kr_dir = tmp_path / "kr"
     kr_dir.mkdir()
-    monkeypatch.setattr(validate_mod, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(validate_mod, "LAW_REPO", tmp_path)
     monkeypatch.setattr(validate_mod, "METADATA_FILE", tmp_path / "metadata.json")
     import laws.config as lconf
+    monkeypatch.setattr(lconf, "LAW_REPO", tmp_path)
     monkeypatch.setattr(lconf, "KR_DIR", kr_dir)
+    monkeypatch.setattr(validate_mod, "KR_DIR", kr_dir)
 
 
 def _write_md(path: Path, content: str) -> None:

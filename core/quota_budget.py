@@ -11,10 +11,10 @@ from datetime import datetime
 from pathlib import Path
 
 from .atomic_io import atomic_write_text
-from .config import WORKSPACE_ROOT
+from .config import CACHE_ROOT
 
 DEFAULT_DAILY_BUDGET = int(os.environ.get("LAW_API_DAILY_BUDGET", "100000"))
-STATE_FILE = WORKSPACE_ROOT / ".cache" / "law_api_quota_budget.json"
+STATE_FILE = CACHE_ROOT / "law_api_quota_budget.json"
 
 
 def today_key() -> str:

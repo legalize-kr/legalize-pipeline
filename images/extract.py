@@ -14,7 +14,7 @@ from datetime import date
 from pathlib import Path
 
 from . import config
-from .config import IMAGE_DOWNLOAD_URL, WORKSPACE_ROOT
+from .config import IMAGE_DOWNLOAD_URL
 from .manifest import ImageEntry, Manifest, load_manifest
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ def _parse_priority(text: str) -> int:
         return 9999
 
 
-def _extract_from_file(md_file: Path) -> list[ImageEntry]:
+def _extract_from_file(md_file: Path, repo_root: Path) -> list[ImageEntry]:
     """Extract all image entries from a single markdown file."""
     try:
         text = md_file.read_text(encoding="utf-8")
@@ -56,7 +56,7 @@ def _extract_from_file(md_file: Path) -> list[ImageEntry]:
         logger.warning(f"Cannot read {md_file}: {e}")
         return []
 
-    doc_path = str(md_file.relative_to(WORKSPACE_ROOT))
+    doc_path = str(md_file.relative_to(repo_root))
     priority = _parse_priority(text)
     entries: list[ImageEntry] = []
 
@@ -97,13 +97,14 @@ def extract(kr_dir: Path | None = None) -> Manifest:
     Returns the Manifest (also saves it to MANIFEST_PATH).
     """
     kr_dir = kr_dir or config.KR_DIR
+    repo_root = kr_dir.parent
     md_files = sorted(kr_dir.rglob("*.md"))
     total = len(md_files)
     logger.info(f"Scanning {total} markdown files under {kr_dir}")
 
     all_entries: list[ImageEntry] = []
     for i, md_file in enumerate(md_files, start=1):
-        all_entries.extend(_extract_from_file(md_file))
+        all_entries.extend(_extract_from_file(md_file, repo_root))
         if i % 1000 == 0:
             logger.info(f"Progress: {i}/{total} files scanned, {len(all_entries)} images found so far")
 

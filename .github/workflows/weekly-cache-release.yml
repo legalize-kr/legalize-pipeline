@@ -17,6 +17,12 @@ concurrency:
   group: workspace-cache
   cancel-in-progress: false
 
+env:
+  WORKSPACE_ROOT: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT
+  LEGALIZE_CACHE_DIR: ${{ secrets.LEGALIZE_CACHE_DIR }}
+  LEGALIZE_KR_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-kr
+  PIPELINE_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
+
 jobs:
   release:
     runs-on: self-hosted
@@ -29,26 +35,29 @@ jobs:
           repository: legalize-kr/legalize-kr
           token: ${{ secrets.REPO_PAT }}
           fetch-depth: 0
-          path: workspace
-
-      - name: Clean previous pipeline checkout
-        run: rm -rf workspace/pipeline
+          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-kr
 
       - name: Checkout pipeline
         uses: actions/checkout@v4
         with:
-          path: workspace/pipeline
+          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
 
       - name: Link persistent cache
         run: |
-          mkdir -p /opt/data/legalize-cache
-          ln -sfn /opt/data/legalize-cache workspace/.cache
+          if [ -z "${LEGALIZE_CACHE_DIR:-}" ]; then
+            echo "::error::LEGALIZE_CACHE_DIR is not configured"
+            exit 1
+          fi
+          mkdir -p "$WORKSPACE_ROOT"
+          mkdir -p "$LEGALIZE_CACHE_DIR"
+          rm -rf "$WORKSPACE_ROOT/.cache"
+          ln -s "$LEGALIZE_CACHE_DIR" "$WORKSPACE_ROOT/.cache"
 
       - name: Setup Python venv
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          pip install -r workspace/pipeline/requirements.txt
+          python3 -m venv "$WORKSPACE_ROOT/.venv"
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
+          pip install -r "$PIPELINE_REPO/requirements.txt"
 
       - name: Assert zstd version
         run: |
@@ -79,17 +88,17 @@ jobs:
 
       - name: Build archive with split
         run: |
-          cd workspace
+          cd "$WORKSPACE_ROOT"
           tar --use-compress-program="zstd -22 --long=27 -T0" -cf - -C .cache detail history precedent images admrule ordinance \
             | split -b 1900M -d -a 3 - "$GITHUB_WORKSPACE/staging/${TAG}.tar.zst.part"
 
       - name: Generate manifest
-        working-directory: workspace/pipeline
+        working-directory: ${{ env.PIPELINE_REPO }}
         run: |
-          . ../../.venv/bin/activate
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
           python -m cache.pack \
             --staging "$GITHUB_WORKSPACE/staging" \
-            --cache-root "$GITHUB_WORKSPACE/workspace/.cache" \
+            --cache-root "$WORKSPACE_ROOT/.cache" \
             --manifest "$GITHUB_WORKSPACE/staging/manifest.json" \
             --markdown "$GITHUB_WORKSPACE/staging/manifest.md"
 

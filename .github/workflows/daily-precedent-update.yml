@@ -17,6 +17,13 @@ concurrency:
   group: workspace-cache
   cancel-in-progress: false
 
+env:
+  WORKSPACE_ROOT: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT
+  LEGALIZE_CACHE_DIR: ${{ secrets.LEGALIZE_CACHE_DIR }}
+  PRECEDENT_KR_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/precedent-kr
+  LEGALIZE_WEB_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-web
+  PIPELINE_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
+
 jobs:
   update:
     runs-on: self-hosted
@@ -29,51 +36,53 @@ jobs:
           repository: legalize-kr/precedent-kr
           token: ${{ secrets.REPO_PAT }}
           fetch-depth: 0
-          path: workspace
-
-      - name: Clean previous pipeline checkout
-        run: rm -rf workspace/pipeline
+          path: LEGALIZE-KR-WORKSPACE-ROOT/precedent-kr
 
       - name: Checkout pipeline
         uses: actions/checkout@v4
         with:
-          path: workspace/pipeline
+          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
 
       - name: Checkout docs repo
         uses: actions/checkout@v4
         with:
           repository: legalize-kr/legalize-web
           token: ${{ secrets.REPO_PAT }}
-          path: docs-repo
+          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-web
 
       - name: Link persistent cache
         run: |
-          mkdir -p /opt/data/legalize-cache
-          ln -sfn /opt/data/legalize-cache workspace/.cache
+          if [ -z "${LEGALIZE_CACHE_DIR:-}" ]; then
+            echo "::error::LEGALIZE_CACHE_DIR is not configured"
+            exit 1
+          fi
+          mkdir -p "$WORKSPACE_ROOT"
+          mkdir -p "$LEGALIZE_CACHE_DIR"
+          rm -rf "$WORKSPACE_ROOT/.cache"
+          ln -s "$LEGALIZE_CACHE_DIR" "$WORKSPACE_ROOT/.cache"
 
       - name: Setup Python venv
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          pip install -r workspace/pipeline/requirements.txt
+          python3 -m venv "$WORKSPACE_ROOT/.venv"
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
+          pip install -r "$PIPELINE_REPO/requirements.txt"
 
       - name: Configure git
-        working-directory: workspace
+        working-directory: ${{ env.PRECEDENT_KR_REPO }}
         run: |
           git config user.name "legalize-kr-bot"
           git config user.email "bot@legalize.kr"
 
       - name: Run precedent update
-        working-directory: workspace/pipeline
+        working-directory: ${{ env.PIPELINE_REPO }}
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
-          WORKSPACE_ROOT: ${{ github.workspace }}/workspace
         run: |
-          . ../../.venv/bin/activate
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
           python -m precedents.update --days ${{ inputs.days || '180' }}
 
       - name: Validate filename byte-length invariant (NAME_MAX)
-        working-directory: workspace
+        working-directory: ${{ env.PRECEDENT_KR_REPO }}
         run: |
           over=$(LC_ALL=C find . -path ./.git -prune -o -type f -print \
                  | awk -F/ '{ if (length($NF) > 255) print $0 }')
@@ -84,7 +93,7 @@ jobs:
           fi
 
       - name: Remove stale metadata.json and stats.json from precedent repo
-        working-directory: workspace
+        working-directory: ${{ env.PRECEDENT_KR_REPO }}
         run: |
           changed=0
           for f in metadata.json stats.json; do
@@ -106,7 +115,7 @@ jobs:
           fi
 
       - name: Push changes
-        working-directory: workspace
+        working-directory: ${{ env.PRECEDENT_KR_REPO }}
         run: |
           if [ -n "$(git log origin/main..HEAD --oneline)" ]; then
             git push
@@ -115,10 +124,8 @@ jobs:
           fi
 
       - name: Regenerate precedent-stats.json in docs repo
-        env:
-          WORKSPACE_ROOT: ${{ github.workspace }}/workspace
         run: |
-          cd docs-repo
+          cd "$LEGALIZE_WEB_REPO"
           git fetch origin main
           git reset --hard origin/main
           python3 - <<'PYTHON_EOF'
@@ -128,7 +135,7 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
 
-          root = Path(os.environ["WORKSPACE_ROOT"])
+          root = Path(os.environ["PRECEDENT_KR_REPO"])
           files = [
               p for p in root.rglob("*.md")
               if ".git" not in p.parts

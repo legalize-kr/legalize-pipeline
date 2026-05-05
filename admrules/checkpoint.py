@@ -6,11 +6,11 @@ import threading
 
 from core.atomic_io import atomic_write_text
 
-from .config import WORKSPACE_ROOT
+from .config import CACHE_ROOT
 
 logger = logging.getLogger(__name__)
 
-CHECKPOINT_FILE = WORKSPACE_ROOT / ".admrule-checkpoint.json"
+CHECKPOINT_FILE = CACHE_ROOT / ".admrule-checkpoint.json"
 _LOCK = threading.Lock()
 
 

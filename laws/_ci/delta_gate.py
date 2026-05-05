@@ -99,17 +99,15 @@ def _load_json(path: str) -> dict:
 
 
 def main() -> int:
-    """CLI entrypoint for CI: reads ``.failed_msts.json`` and the baseline,
-    prints messages, and returns an exit code.
-
-    Paths are relative to the current working directory (CI sets
-    ``working-directory: workspace`` so ``.failed_msts.json`` is at the data-repo
-    root and ``pipeline/.failure-baseline.json`` is the sibling pipeline repo).
-    """
+    """CLI entrypoint for CI: reads the law failure ledger and baseline."""
     import time
+    from pathlib import Path
 
-    cur = _load_json(".failed_msts.json")
-    base = _load_json("pipeline/.failure-baseline.json")
+    from laws.config import PROJECT_ROOT
+    from laws.failures import FAILED_FILE
+
+    cur = _load_json(str(FAILED_FILE))
+    base = _load_json(str(Path(PROJECT_ROOT) / ".failure-baseline.json"))
     code, messages = evaluate_delta(cur, base, time.time())
     for m in messages:
         print(m)

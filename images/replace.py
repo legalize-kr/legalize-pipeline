@@ -7,7 +7,7 @@ import logging
 
 from core.atomic_io import atomic_write_text
 
-from .config import WORKSPACE_ROOT
+from . import config
 from .manifest import load_manifest
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ def replace_images(dry_run: bool = False) -> None:
     tags_not_found = 0
 
     for doc_path, entries in by_doc.items():
-        file_path = WORKSPACE_ROOT / doc_path
+        file_path = config.KR_DIR.parent / doc_path
         if not file_path.exists():
             logger.warning(f"File not found, skipping: {file_path}")
             continue

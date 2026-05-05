@@ -1,8 +1,10 @@
 """Configuration for the administrative rules pipeline."""
 
 from core.config import (  # noqa: F401 - re-exported for package modules
+    ADMRULE_KR_REPO,
     BACKOFF_BASE_SECONDS,
     BOT_AUTHOR,
+    CACHE_ROOT,
     CONCURRENT_WORKERS,
     LAW_API_BASE,
     LAW_API_KEY,
@@ -12,8 +14,8 @@ from core.config import (  # noqa: F401 - re-exported for package modules
     WORKSPACE_ROOT,
 )
 
-ADMRULE_REPO = WORKSPACE_ROOT / "admrule-kr"
-ADMRULE_CACHE_DIR = WORKSPACE_ROOT / ".cache" / "admrule"
+ADMRULE_REPO = ADMRULE_KR_REPO
+ADMRULE_CACHE_DIR = CACHE_ROOT / "admrule"
 
 ADMRULE_TYPES = {
     "1": "훈령",

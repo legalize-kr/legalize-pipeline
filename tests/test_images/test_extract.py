@@ -6,15 +6,14 @@ from pathlib import Path
 import pytest
 
 import images.config as cfg
-import images.extract as ext_mod
 from images.extract import _ID_ONLY_RE, _SRC_RE, _parse_priority, extract
 from images.manifest import Manifest, ImageEntry, load_manifest
 
 
 @pytest.fixture(autouse=True)
 def patch_paths(tmp_path, monkeypatch):
-    """Point WORKSPACE_ROOT and MANIFEST_PATH to tmp_path for all tests."""
-    monkeypatch.setattr(ext_mod, "WORKSPACE_ROOT", tmp_path)
+    """Point KR_DIR and MANIFEST_PATH to tmp_path for all tests."""
+    monkeypatch.setattr(cfg, "KR_DIR", tmp_path / "kr")
     monkeypatch.setattr(cfg, "MANIFEST_PATH", tmp_path / "manifest.json")
 
 

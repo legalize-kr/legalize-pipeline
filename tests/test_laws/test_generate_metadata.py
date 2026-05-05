@@ -13,12 +13,13 @@ import laws.generate_metadata as gen_meta
 def patch_dirs(tmp_path: Path, monkeypatch):
     kr_dir = tmp_path / "kr"
     kr_dir.mkdir()
-    monkeypatch.setattr(gen_meta, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(gen_meta, "LAW_REPO", tmp_path)
     monkeypatch.setattr(gen_meta, "METADATA_FILE", tmp_path / "metadata.json")
     monkeypatch.setattr(gen_meta, "STATS_FILE", tmp_path / "stats.json")
     monkeypatch.setattr(gen_meta, "ANOMALIES_FILE", tmp_path / "anomalies.json")
     # generate() reads KR_DIR from laws.config at call time via the imported name
     import laws.config as lconf
+    monkeypatch.setattr(lconf, "LAW_REPO", tmp_path)
     monkeypatch.setattr(lconf, "KR_DIR", kr_dir)
     # Also patch the name directly in gen_meta's module namespace
     monkeypatch.setattr(gen_meta, "KR_DIR", kr_dir, raising=False)

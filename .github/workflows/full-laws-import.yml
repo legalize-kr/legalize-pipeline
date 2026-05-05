@@ -19,6 +19,13 @@ concurrency:
   group: laws-update
   cancel-in-progress: false
 
+env:
+  WORKSPACE_ROOT: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT
+  LEGALIZE_CACHE_DIR: ${{ secrets.LEGALIZE_CACHE_DIR }}
+  LEGALIZE_KR_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-kr
+  LEGALIZE_WEB_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-web
+  PIPELINE_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
+
 jobs:
   import:
     runs-on: self-hosted
@@ -31,47 +38,50 @@ jobs:
           repository: legalize-kr/legalize-kr
           token: ${{ secrets.REPO_PAT }}
           fetch-depth: 0
-          path: workspace
-
-      - name: Clean previous pipeline checkout
-        run: rm -rf workspace/pipeline
+          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-kr
 
       - name: Checkout pipeline
         uses: actions/checkout@v4
         with:
-          path: workspace/pipeline
+          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
 
       - name: Checkout docs repo
         uses: actions/checkout@v4
         with:
           repository: legalize-kr/legalize-web
           token: ${{ secrets.REPO_PAT }}
-          path: docs-repo
+          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-web
 
       - name: Link persistent cache
         run: |
-          mkdir -p /opt/data/legalize-cache
-          ln -sfn /opt/data/legalize-cache workspace/.cache
+          if [ -z "${LEGALIZE_CACHE_DIR:-}" ]; then
+            echo "::error::LEGALIZE_CACHE_DIR is not configured"
+            exit 1
+          fi
+          mkdir -p "$WORKSPACE_ROOT"
+          mkdir -p "$LEGALIZE_CACHE_DIR"
+          rm -rf "$WORKSPACE_ROOT/.cache"
+          ln -s "$LEGALIZE_CACHE_DIR" "$WORKSPACE_ROOT/.cache"
 
       - name: Setup Python venv
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          pip install -r workspace/pipeline/requirements.txt
+          python3 -m venv "$WORKSPACE_ROOT/.venv"
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
+          pip install -r "$PIPELINE_REPO/requirements.txt"
 
       - name: Configure git
-        working-directory: workspace
+        working-directory: ${{ env.LEGALIZE_KR_REPO }}
         run: |
           git config user.name "legalize-kr-bot"
           git config user.email "bot@legalize.kr"
 
       - name: Build cache if missing
-        working-directory: workspace/pipeline
+        working-directory: ${{ env.PIPELINE_REPO }}
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
         run: |
-          . ../../.venv/bin/activate
-          if [ ! -d "../.cache/detail" ] || [ -z "$(ls -A ../.cache/detail/ 2>/dev/null)" ]; then
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
+          if [ ! -d "$WORKSPACE_ROOT/.cache/detail" ] || [ -z "$(ls -A "$WORKSPACE_ROOT/.cache/detail/" 2>/dev/null)" ]; then
             echo "Cache missing or empty, building..."
             if ! python -m laws.fetch_cache 2>&1 | tee /tmp/fetch_cache.log; then
               echo "::error::fetch_cache failed. If this is an invariant breach, inspect allowlist at laws/known_empty_history.yaml."
@@ -80,7 +90,7 @@ jobs:
               exit 1
             fi
           else
-            echo "Cache exists ($(ls ../.cache/detail/*.xml 2>/dev/null | wc -l) detail files)"
+            echo "Cache exists ($(ls "$WORKSPACE_ROOT"/.cache/detail/*.xml 2>/dev/null | wc -l) detail files)"
           fi
 
       - name: Try download compiler
@@ -89,8 +99,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.REPO_PAT }}
         run: |
+          arch=$(uname -m)
+          case "$arch" in
+            aarch64|arm64) pattern='linux.*(aarch64|arm64)|(aarch64|arm64).*linux' ;;
+            x86_64|amd64) pattern='linux.*(x86_64|amd64)|(x86_64|amd64).*linux' ;;
+            *) echo "::warning::Unsupported compiler arch: $arch"; echo "available=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
+          esac
           ASSET_URL=$(gh api repos/legalize-kr/compiler/releases/latest \
-            --jq '.assets[] | select(.name | test("linux.*x86_64|x86_64.*linux")) | .browser_download_url' 2>/dev/null)
+            --jq ".assets[] | select(.name | test(\"$pattern\")) | .browser_download_url" 2>/dev/null | head -1)
           if [ -n "$ASSET_URL" ]; then
             echo "Downloading compiler from $ASSET_URL"
             curl -sL "$ASSET_URL" -o /tmp/legalize-compiler
@@ -102,38 +118,38 @@ jobs:
           fi
 
       - name: Rebuild repository
-        working-directory: workspace/pipeline
+        working-directory: ${{ env.PIPELINE_REPO }}
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
           LAW_TYPE: ${{ inputs.law_type }}
           LIMIT: ${{ inputs.limit }}
         run: |
-          . ../../.venv/bin/activate
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
           if [ "${{ steps.compiler.outputs.available }}" = "true" ]; then
             echo "Running compiler..."
             # 컴파일러는 bare repo를 새로 만든다 (<cache_dir> -o <output.git>).
             # 매 실행마다 깨끗한 출력을 위해 먼저 제거한다.
             rm -rf /tmp/rebuilt.git
-            /tmp/legalize-compiler ../.cache -o /tmp/rebuilt.git
+            /tmp/legalize-compiler "$WORKSPACE_ROOT/.cache" -o /tmp/rebuilt.git
             # 재구성된 bare repo의 main을 workspace 체크아웃에 반영해
             # 이후 "Force push" 단계가 재구성 히스토리를 origin에 올리도록 한다.
             # (컴파일러 출력은 bare이므로 working tree에 직접 쓸 수 없고,
             #  workspace는 non-bare이므로 fetch + reset --hard 로 통합)
             echo "Integrating rebuilt bare repo into workspace..."
-            ( cd .. && git fetch /tmp/rebuilt.git main && git reset --hard FETCH_HEAD )
+            ( cd "$LEGALIZE_KR_REPO" && git fetch /tmp/rebuilt.git main && git reset --hard FETCH_HEAD )
           else
             echo "Running rebuild..."
             python -m laws.rebuild --branch rebuild
           fi
 
       - name: Validate
-        working-directory: workspace/pipeline
+        working-directory: ${{ env.PIPELINE_REPO }}
         run: |
-          . ../../.venv/bin/activate
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
           python -m laws.validate
 
       - name: Force push rebuilt history
-        working-directory: workspace
+        working-directory: ${{ env.LEGALIZE_KR_REPO }}
         run: |
           BRANCH=$(git rev-parse --abbrev-ref HEAD)
           if [ "$BRANCH" = "rebuild" ]; then
@@ -143,11 +159,11 @@ jobs:
 
       - name: Update docs stats
         run: |
-          if [ -f workspace/stats.json ]; then
-            cd docs-repo
+          if [ -f "$LEGALIZE_KR_REPO/stats.json" ]; then
+            cd "$LEGALIZE_WEB_REPO"
             git fetch origin main
             git reset --hard origin/main
-            cp ../workspace/stats.json stats.json
+            cp "$LEGALIZE_KR_REPO/stats.json" stats.json
             git add stats.json
             git diff --staged --quiet && echo "No docs changes" && exit 0
             git config user.name "legalize-kr-bot"

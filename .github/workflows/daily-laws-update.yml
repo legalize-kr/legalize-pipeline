@@ -12,6 +12,13 @@ concurrency:
   group: workspace-cache
   cancel-in-progress: false
 
+env:
+  WORKSPACE_ROOT: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT
+  LEGALIZE_CACHE_DIR: ${{ secrets.LEGALIZE_CACHE_DIR }}
+  LEGALIZE_KR_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-kr
+  LEGALIZE_WEB_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-web
+  PIPELINE_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
+
 jobs:
   update:
     runs-on: self-hosted
@@ -24,62 +31,65 @@ jobs:
           repository: legalize-kr/legalize-kr
           token: ${{ secrets.REPO_PAT }}
           fetch-depth: 0
-          path: workspace
-
-      - name: Clean previous pipeline checkout
-        run: rm -rf workspace/pipeline
+          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-kr
 
       - name: Checkout pipeline
         uses: actions/checkout@v4
         with:
-          path: workspace/pipeline
+          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
 
       - name: Checkout docs repo
         uses: actions/checkout@v4
         with:
           repository: legalize-kr/legalize-web
           token: ${{ secrets.REPO_PAT }}
-          path: docs-repo
+          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-web
 
       - name: Link persistent cache
         run: |
-          mkdir -p /opt/data/legalize-cache
-          ln -sfn /opt/data/legalize-cache workspace/.cache
+          if [ -z "${LEGALIZE_CACHE_DIR:-}" ]; then
+            echo "::error::LEGALIZE_CACHE_DIR is not configured"
+            exit 1
+          fi
+          mkdir -p "$WORKSPACE_ROOT"
+          mkdir -p "$LEGALIZE_CACHE_DIR"
+          rm -rf "$WORKSPACE_ROOT/.cache"
+          ln -s "$LEGALIZE_CACHE_DIR" "$WORKSPACE_ROOT/.cache"
 
       - name: Setup Python venv
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          pip install -r workspace/pipeline/requirements.txt
+          python3 -m venv "$WORKSPACE_ROOT/.venv"
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
+          pip install -r "$PIPELINE_REPO/requirements.txt"
 
       - name: Configure git
-        working-directory: workspace
+        working-directory: ${{ env.LEGALIZE_KR_REPO }}
         run: |
           git config user.name "legalize-kr-bot"
           git config user.email "bot@legalize.kr"
 
       - name: Run update
-        working-directory: workspace/pipeline
+        working-directory: ${{ env.PIPELINE_REPO }}
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
         run: |
-          . ../../.venv/bin/activate
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
           python -m laws.update
 
       - name: Validate
-        working-directory: workspace/pipeline
+        working-directory: ${{ env.PIPELINE_REPO }}
         run: |
-          . ../../.venv/bin/activate
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
           python -m laws.validate
 
       - name: Report import failures
-        working-directory: workspace
+        working-directory: ${{ env.PIPELINE_REPO }}
         run: |
-          . ../.venv/bin/activate
-          PYTHONPATH="$(pwd)/pipeline" python -m laws._ci.delta_gate
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
+          python -m laws._ci.delta_gate
 
       - name: Push law changes
-        working-directory: workspace
+        working-directory: ${{ env.LEGALIZE_KR_REPO }}
         run: |
           if [ -n "$(git log origin/main..HEAD --oneline)" ]; then
             git push
@@ -89,11 +99,11 @@ jobs:
 
       - name: Update docs stats
         run: |
-          if [ -f workspace/stats.json ]; then
-            cd docs-repo
+          if [ -f "$LEGALIZE_KR_REPO/stats.json" ]; then
+            cd "$LEGALIZE_WEB_REPO"
             git fetch origin main
             git reset --hard origin/main
-            cp ../workspace/stats.json stats.json
+            cp "$LEGALIZE_KR_REPO/stats.json" stats.json
             git add stats.json
             git diff --staged --quiet && echo "No docs changes" && exit 0
             git config user.name "legalize-kr-bot"
