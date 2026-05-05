@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Checkout administrative rules repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: legalize-kr/admrule-kr
           token: ${{ secrets.REPO_PAT }}
@@ -38,7 +38,7 @@ jobs:
           path: LEGALIZE-KR-WORKSPACE-ROOT/admrule-kr
 
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
 

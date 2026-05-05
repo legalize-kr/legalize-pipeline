@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout law repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: legalize-kr/legalize-kr
           token: ${{ secrets.REPO_PAT }}
@@ -33,7 +33,7 @@ jobs:
           path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-kr
 
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
 
@@ -103,22 +103,17 @@ jobs:
         working-directory: ${{ env.PIPELINE_REPO }}
         run: du -sh "$LEGALIZE_CACHE_DIR"/* | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Download previous baseline artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: cache-baseline
-        continue-on-error: true
-
       - name: File-count regression gate
         run: |
+          baseline_file="$LEGALIZE_CACHE_DIR/.cache-baseline.json"
           # Note: legitimate count drops can come from law repeals (detail/), _no_result_ids.txt pruning (precedent/), or upstream cache invalidation. 1% tolerance band absorbs these.
           pass=true
           for subdir in detail history precedent images admrule ordinance; do
-            new=$(find "$LEGALIZE_CACHE_DIR/$subdir" -type f 2>/dev/null | wc -l)
+            new=$(find "$LEGALIZE_CACHE_DIR/$subdir" -type f 2>/dev/null | wc -l | tr -d ' ')
             echo "Cache $subdir: $new files"
-            if [ -f cache-baseline.json ]; then
-              baseline=$(python3 -c "import json,sys; d=json.load(open('cache-baseline.json')); print(d.get('$subdir', 0))")
-              threshold=$(python3 -c "print(int($baseline * 0.99))")
+            if [ -f "$baseline_file" ]; then
+              baseline=$(BASELINE_FILE="$baseline_file" SUBDIR="$subdir" python3 -c 'import json, os; d=json.load(open(os.environ["BASELINE_FILE"])); print(d.get(os.environ["SUBDIR"], 0))')
+              threshold=$(BASELINE="$baseline" python3 -c 'import os; print(int(int(os.environ["BASELINE"]) * 0.99))')
               if [ "$new" -lt "$threshold" ]; then
                 echo "::error::Cache regression in $subdir: $new < threshold $threshold (baseline $baseline)"
                 pass=false
@@ -136,14 +131,16 @@ jobs:
                   capture_output=True, text=True
               )
               counts[subdir] = len([l for l in result.stdout.splitlines() if l])
-          pathlib.Path("cache-baseline.json").write_text(json.dumps(counts, indent=2))
+          payload = json.dumps(counts, indent=2)
+          pathlib.Path("cache-baseline.json").write_text(payload)
+          (pathlib.Path(os.environ["LEGALIZE_CACHE_DIR"]) / ".cache-baseline.json").write_text(payload)
           print("Wrote cache-baseline.json:", counts)
           PYTHON_EOF
           $pass || exit 1
 
       - name: Upload baseline artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cache-baseline
           path: cache-baseline.json
-          retention-days: 400
+          retention-days: 90

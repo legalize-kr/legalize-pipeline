@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout precedent repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: legalize-kr/precedent-kr
           token: ${{ secrets.REPO_PAT }}
@@ -39,12 +39,12 @@ jobs:
           path: LEGALIZE-KR-WORKSPACE-ROOT/precedent-kr
 
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
 
       - name: Checkout docs repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: legalize-kr/legalize-web
           token: ${{ secrets.REPO_PAT }}
