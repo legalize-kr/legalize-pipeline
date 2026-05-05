@@ -276,6 +276,7 @@ def test_precedent_to_markdown_has_valid_frontmatter():
     fm = yaml.safe_load(md[4:end])
     assert isinstance(fm, dict)
     assert len(fm) > 0
+    assert fm["첨부파일"] == []
 
 
 def test_precedent_to_markdown_omits_empty_sections():

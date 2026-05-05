@@ -1,0 +1,86 @@
+name: Daily Ordinances Update
+
+on:
+  schedule:
+    - cron: '0 13 * * *' # 22:00 KST (UTC+9)
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Limit import count for probe runs'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: workspace-cache
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: self-hosted
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout ordinances repo
+        uses: actions/checkout@v4
+        with:
+          repository: legalize-kr/ordinance-kr
+          token: ${{ secrets.REPO_PAT }}
+          fetch-depth: 0
+          path: workspace
+
+      - name: Clean previous pipeline checkout
+        run: rm -rf workspace/pipeline
+
+      - name: Checkout pipeline
+        uses: actions/checkout@v4
+        with:
+          path: workspace/pipeline
+
+      - name: Link persistent cache
+        run: |
+          mkdir -p /opt/data/legalize-cache
+          ln -sfn /opt/data/legalize-cache workspace/.cache
+
+      - name: Setup Python venv
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install -r workspace/pipeline/requirements.txt
+
+      - name: Configure git
+        working-directory: workspace
+        run: |
+          git config user.name "legalize-kr-bot"
+          git config user.email "bot@legalize.kr"
+
+      - name: Run ordinances update
+        working-directory: workspace/pipeline
+        env:
+          LAW_OC: ${{ secrets.LAW_OC }}
+          WORKSPACE_ROOT: ${{ github.workspace }}/workspace
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          . ../../.venv/bin/activate
+          if [ -n "$LIMIT" ]; then
+            python -m ordinances.update --repo .. --limit "$LIMIT" --days 10 --commit
+          else
+            python -m ordinances.update --repo .. --days 10 --commit
+          fi
+
+      - name: Validate
+        working-directory: workspace/pipeline
+        run: |
+          . ../../.venv/bin/activate
+          python -m ordinances.validate ..
+
+      - name: Push changes
+        working-directory: workspace
+        run: |
+          if [ -n "$(git log origin/main..HEAD --oneline)" ]; then
+            git push
+          else
+            echo "No new commits to push"
+          fi

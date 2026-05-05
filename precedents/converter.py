@@ -322,6 +322,7 @@ def precedent_to_markdown(parsed: dict) -> str:
         "법원등급": court_tier,
         "사건종류": case_type,
         "출처": f"https://www.law.go.kr/LSW/precInfoP.do?precSeq={serial}",
+        "첨부파일": [],
     }
     if judgment_date is not None:
         fm["선고일자"] = judgment_date

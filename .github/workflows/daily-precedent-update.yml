@@ -2,7 +2,7 @@ name: Daily Precedents Update
 
 on:
   schedule:
-    - cron: '0 14 * * *' # 23:00 KST (UTC+9)
+    - cron: '0 11 * * *' # 20:00 KST (UTC+9)
   workflow_dispatch:
     inputs:
       days:

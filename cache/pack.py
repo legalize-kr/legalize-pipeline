@@ -175,7 +175,7 @@ def render_markdown(manifest: dict, date_str: str) -> str:
         "```sh",
         f"# 모든 파트를 한 번에 해제하여 워크스페이스 루트에 풀기",
         f"cat {tag}.tar.zst.part* | zstd -d --long=27 -T0 | tar -xf -",
-        "# .cache/detail/, .cache/history/, .cache/precedent/, .cache/images/ 가 생성됩니다",
+        "# .cache/detail/, .cache/history/, .cache/precedent/, .cache/images/, .cache/admrule/, .cache/ordinance/ 가 생성됩니다",
         "```",
         "",
         "> **주의:** 파트 파일 중 하나라도 누락되면 압축 해제가 실패합니다.",

@@ -56,6 +56,29 @@ def test_parse_frontmatter(tmp_path: Path):
     assert fm["법령MST"] == 253527
 
 
+def test_parse_frontmatter_allows_attachment_values_with_dashes(tmp_path: Path):
+    path = tmp_path / "kr" / "민법" / "법률.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        """---
+제목: 민법
+법령MST: 253527
+첨부파일:
+- 제목: 수수료 --- 기준
+  파일링크: https://www.law.go.kr/LSW/flDownload.do?flSeq=1
+---
+
+# 민법
+""",
+        encoding="utf-8",
+    )
+
+    fm = gen_meta.parse_frontmatter(path)
+
+    assert fm is not None
+    assert fm["첨부파일"][0]["제목"] == "수수료 --- 기준"
+
+
 def test_parse_frontmatter_no_yaml(tmp_path: Path):
     path = tmp_path / "kr" / "민법" / "법률.md"
     path.parent.mkdir(parents=True, exist_ok=True)

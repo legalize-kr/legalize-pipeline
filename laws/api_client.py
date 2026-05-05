@@ -21,6 +21,42 @@ logger = logging.getLogger(__name__)
 _throttle = Throttle(REQUEST_DELAY_SECONDS)
 
 
+def _absolute_law_url(value: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        return ""
+    if value.startswith("/"):
+        return f"https://www.law.go.kr{value}"
+    if value.startswith("http://") or value.startswith("https://"):
+        return value
+    return f"https://www.law.go.kr/{value}"
+
+
+def _attachments_from_xml(root: ElementTree.Element) -> list[dict]:
+    attachments = []
+    for node in root.findall(".//별표단위"):
+        file_link = _absolute_law_url(
+            node.findtext("별표서식파일링크", "") or node.findtext("별표파일링크", "")
+        )
+        pdf_link = _absolute_law_url(
+            node.findtext("별표서식PDF파일링크", "") or node.findtext("별표PDF파일링크", "")
+        )
+        if not file_link and not pdf_link:
+            continue
+        attachment = {
+            "별표번호": (node.findtext("별표번호", "") or "").strip(),
+            "별표가지번호": (node.findtext("별표가지번호", "") or "").strip(),
+            "별표구분": (node.findtext("별표구분", "") or "").strip() or "별표",
+            "제목": (node.findtext("별표제목", "") or "").strip(),
+        }
+        if file_link:
+            attachment["파일링크"] = file_link
+        if pdf_link:
+            attachment["PDF링크"] = pdf_link
+        attachments.append(attachment)
+    return attachments
+
+
 def _request(url: str, params: dict) -> requests.Response:
     """Make a throttled request with retry and exponential backoff."""
     return make_request(
@@ -183,6 +219,7 @@ def get_law_detail(mst_id: str | int) -> dict:
         "metadata": metadata,
         "articles": articles,
         "addenda": addenda,
+        "attachments": _attachments_from_xml(root),
         "raw_xml": raw,
     }
 

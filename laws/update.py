@@ -41,11 +41,11 @@ def _markdown_law_id(md_file) -> str | None:
     if not text.startswith("---"):
         return None
     try:
-        end = text.index("---", 3)
+        yaml_str, _body = text.removeprefix("---\n").split("\n---\n", 1)
     except ValueError:
         return None
     try:
-        fm = yaml.safe_load(text[3:end])
+        fm = yaml.safe_load(yaml_str)
     except yaml.YAMLError:
         return None
     if isinstance(fm, dict):

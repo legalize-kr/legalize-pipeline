@@ -33,6 +33,7 @@ VALID_FRONTMATTER = """\
   - 법무부
 공포일자: 2024-01-01
 상태: 시행
+첨부파일: []
 ---
 
 # 민법
@@ -65,6 +66,7 @@ def test_validate_non_list_department(tmp_path: Path):
 소관부처: 법무부
 공포일자: 2024-01-01
 상태: 시행
+첨부파일: []
 ---
 # 민법
 """
@@ -85,6 +87,7 @@ def test_validate_unnormalized_unicode(tmp_path: Path):
         "소관부처:\n  - 법무부\n"
         "공포일자: 2024-01-01\n"
         "상태: 시행\n"
+        "첨부파일: []\n"
         "---\n# 법령\n"
     )
     path = tmp_path / "kr" / "법령" / "법률.md"
@@ -105,3 +108,54 @@ def test_validate_unterminated_frontmatter(tmp_path: Path):
     _write_md(path, "---\n제목: 민법\n# 닫는 --- 없음\n")
     errors = validate_frontmatter(path)
     assert errors  # should have errors
+
+
+def test_validate_attachment_links(tmp_path: Path):
+    content = """\
+---
+제목: 민법
+법령MST: 253527
+법령구분: 법률
+법령구분코드: 법률
+소관부처:
+  - 법무부
+공포일자: 2024-01-01
+상태: 시행
+첨부파일:
+  - 별표번호: '0001'
+    제목: '수수료 --- 기준'
+    파일링크: https://www.law.go.kr/LSW/flDownload.do?flSeq=1
+    PDF링크: /LSW/flDownload.do?flSeq=2
+---
+
+# 민법
+"""
+    path = tmp_path / "kr" / "민법" / "법률.md"
+    _write_md(path, content)
+    assert validate_frontmatter(path) == []
+
+
+def test_validate_rejects_bad_attachment_links(tmp_path: Path):
+    content = """\
+---
+제목: 민법
+법령MST: 253527
+법령구분: 법률
+법령구분코드: 법률
+소관부처:
+  - 법무부
+공포일자: 2024-01-01
+상태: 시행
+첨부파일:
+  - raw
+  - 제목: 외부 파일
+    파일링크: https://example.com/file.hwp
+---
+
+# 민법
+"""
+    path = tmp_path / "kr" / "민법" / "법률.md"
+    _write_md(path, content)
+    errors = validate_frontmatter(path)
+    assert any("첨부파일[0] must be a dict" in error for error in errors)
+    assert any("첨부파일[1].파일링크 must be a law.go.kr URL" in error for error in errors)

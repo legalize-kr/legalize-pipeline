@@ -2,7 +2,7 @@ name: Daily Laws Update
 
 on:
   schedule:
-    - cron: '0 13 * * *' # 22:00 KST (UTC+9)
+    - cron: '0 10 * * *' # 19:00 KST (UTC+9)
   workflow_dispatch:
 
 permissions:

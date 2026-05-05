@@ -105,6 +105,39 @@ def test_get_law_detail_preserves_article_kind():
     assert [article["조문여부"] for article in detail["articles"]] == ["전문", "조문"]
 
 
+@responses_lib.activate
+def test_get_law_detail_extracts_attachment_links():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<법령>
+  <기본정보>
+    <법령명_한글><![CDATA[테스트법]]></법령명_한글>
+    <법종구분>법률</법종구분>
+  </기본정보>
+  <별표>
+    <별표단위>
+      <별표번호>0001</별표번호>
+      <별표가지번호>00</별표가지번호>
+      <별표구분>별표</별표구분>
+      <별표제목><![CDATA[수수료]]></별표제목>
+      <별표서식파일링크>/LSW/flDownload.do?flSeq=1</별표서식파일링크>
+      <별표서식PDF파일링크>/LSW/flDownload.do?flSeq=2</별표서식PDF파일링크>
+    </별표단위>
+  </별표>
+</법령>""".encode()
+    responses_lib.add(responses_lib.GET, f"{LAW_API_BASE}/lawService.do", body=xml, status=200)
+
+    detail = api_client.get_law_detail("33")
+
+    assert detail["attachments"] == [{
+        "별표번호": "0001",
+        "별표가지번호": "00",
+        "별표구분": "별표",
+        "제목": "수수료",
+        "파일링크": "https://www.law.go.kr/LSW/flDownload.do?flSeq=1",
+        "PDF링크": "https://www.law.go.kr/LSW/flDownload.do?flSeq=2",
+    }]
+
+
 def test_parse_dot_date():
     assert api_client._parse_dot_date("1958.2.22") == "19580222"
     assert api_client._parse_dot_date("2024.1.1") == "20240101"

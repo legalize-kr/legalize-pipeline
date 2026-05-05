@@ -154,7 +154,7 @@ def get_law_path(law_name: str, law_type: str, law_id: str = "") -> str:
     return qualified
 
 
-def build_frontmatter(metadata: dict) -> dict:
+def build_frontmatter(metadata: dict, attachments: list[dict] | None = None) -> dict:
     """Build YAML frontmatter dict from metadata."""
     raw_name = metadata.get("법령명한글", "")
     normalized_name = normalize_law_name(raw_name)
@@ -172,6 +172,7 @@ def build_frontmatter(metadata: dict) -> dict:
         "법령분야": metadata.get("법령분야", ""),
         "상태": "시행",
         "출처": f"https://www.law.go.kr/법령/{normalized_name.replace(' ', '')}",
+        "첨부파일": attachments or [],
     }
 
     if normalized_name != raw_name:
@@ -332,7 +333,7 @@ def articles_to_markdown(articles: list[dict]) -> str:
 def law_to_markdown(detail: dict) -> str:
     """Convert a full law detail response to a complete Markdown document."""
     metadata = detail["metadata"]
-    frontmatter = build_frontmatter(metadata)
+    frontmatter = build_frontmatter(metadata, detail.get("attachments", []))
 
     yaml_str = yaml.dump(
         frontmatter,

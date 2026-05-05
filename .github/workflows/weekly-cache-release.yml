@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: cache-release
+  group: workspace-cache
   cancel-in-progress: false
 
 jobs:
@@ -80,7 +80,7 @@ jobs:
       - name: Build archive with split
         run: |
           cd workspace
-          tar --use-compress-program="zstd -22 --long=27 -T0" -cf - -C .cache detail history precedent images \
+          tar --use-compress-program="zstd -22 --long=27 -T0" -cf - -C .cache detail history precedent images admrule ordinance \
             | split -b 1900M -d -a 3 - "$GITHUB_WORKSPACE/staging/${TAG}.tar.zst.part"
 
       - name: Generate manifest

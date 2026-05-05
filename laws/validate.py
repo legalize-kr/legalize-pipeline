@@ -14,6 +14,7 @@ import json
 import logging
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
@@ -22,9 +23,16 @@ from .converter import normalize_law_name
 
 logger = logging.getLogger(__name__)
 
-REQUIRED_FIELDS = ["제목", "법령MST", "법령구분", "법령구분코드", "소관부처", "공포일자", "상태"]
+REQUIRED_FIELDS = ["제목", "법령MST", "법령구분", "법령구분코드", "소관부처", "공포일자", "상태", "첨부파일"]
 
 METADATA_FILE = WORKSPACE_ROOT / "metadata.json"
+
+
+def _is_law_go_kr_url(url: str) -> bool:
+    if url.startswith("/"):
+        return True
+    host = urlparse(url).hostname or ""
+    return host == "law.go.kr" or host.endswith(".law.go.kr")
 
 
 def validate_frontmatter(file_path: Path) -> list[str]:
@@ -39,11 +47,9 @@ def validate_frontmatter(file_path: Path) -> list[str]:
         return ["No YAML frontmatter"]
 
     try:
-        end = text.index("---", 3)
+        yaml_str, _body = text.removeprefix("---\n").split("\n---\n", 1)
     except ValueError:
         return ["Unterminated YAML frontmatter"]
-
-    yaml_str = text[3:end]
     try:
         fm = yaml.safe_load(yaml_str)
     except yaml.YAMLError as e:
@@ -59,6 +65,20 @@ def validate_frontmatter(file_path: Path) -> list[str]:
     dept = fm.get("소관부처")
     if dept is not None and not isinstance(dept, list):
         errors.append(f"소관부처 must be a YAML list, got {type(dept).__name__}")
+
+    attachments = fm.get("첨부파일") or []
+    if not isinstance(attachments, list):
+        errors.append("첨부파일 must be a YAML list")
+        attachments = []
+    for idx, attachment in enumerate(attachments):
+        if not isinstance(attachment, dict):
+            errors.append(f"첨부파일[{idx}] must be a dict")
+            continue
+        if not attachment.get("파일링크") and not attachment.get("PDF링크"):
+            errors.append(f"첨부파일[{idx}] missing required field: 파일링크 or PDF링크")
+        for key in ("파일링크", "PDF링크"):
+            if attachment.get(key) and not _is_law_go_kr_url(str(attachment[key])):
+                errors.append(f"첨부파일[{idx}].{key} must be a law.go.kr URL")
 
     title = fm.get("제목", "")
     if title != normalize_law_name(title):

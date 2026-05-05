@@ -2,7 +2,7 @@ name: Daily Cache Refresh
 
 on:
   schedule:
-    - cron: '0 15 * * *' # 00:00 KST (UTC+9, next day)
+    - cron: '0 14 * * *' # 23:00 KST (UTC+9)
   workflow_dispatch:
 
 permissions:
@@ -75,6 +75,25 @@ jobs:
           . ../../.venv/bin/activate
           python -m precedents.fetch_cache
 
+      - name: Fetch administrative rules cache
+        working-directory: workspace/pipeline
+        env:
+          LAW_OC: ${{ secrets.LAW_OC }}
+          WORKSPACE_ROOT: ${{ github.workspace }}/workspace
+        run: |
+          . ../../.venv/bin/activate
+          python -m admrules.fetch_cache
+
+      - name: Fetch ordinances cache
+        working-directory: workspace/pipeline
+        env:
+          LAW_OC: ${{ secrets.LAW_OC }}
+          LAW_API_DAILY_BUDGET: 300000
+          WORKSPACE_ROOT: ${{ github.workspace }}/workspace
+        run: |
+          . ../../.venv/bin/activate
+          python -m ordinances.fetch_cache
+
       - name: Cache size summary
         working-directory: workspace/pipeline
         run: du -sh ../.cache/* | tee -a "$GITHUB_STEP_SUMMARY"
@@ -89,7 +108,7 @@ jobs:
         run: |
           # Note: legitimate count drops can come from law repeals (detail/), _no_result_ids.txt pruning (precedent/), or upstream cache invalidation. 1% tolerance band absorbs these.
           pass=true
-          for subdir in detail history precedent images; do
+          for subdir in detail history precedent images admrule ordinance; do
             new=$(find workspace/.cache/$subdir -type f 2>/dev/null | wc -l)
             echo "Cache $subdir: $new files"
             if [ -f cache-baseline.json ]; then
@@ -106,7 +125,7 @@ jobs:
           python3 - <<'PYTHON_EOF'
           import json, subprocess, pathlib
           counts = {}
-          for subdir in ["detail", "history", "precedent", "images"]:
+          for subdir in ["detail", "history", "precedent", "images", "admrule", "ordinance"]:
               result = subprocess.run(
                   ["find", f"workspace/.cache/{subdir}", "-type", "f"],
                   capture_output=True, text=True

@@ -4,6 +4,7 @@ import datetime
 from pathlib import Path
 
 import pytest
+import yaml
 
 from laws.converter import (
     _dedent_content,
@@ -227,7 +228,35 @@ def test_build_frontmatter_complete():
     assert fm["공포일자"] == datetime.date(2024, 1, 1)
     assert fm["시행일자"] == datetime.date(2024, 1, 1)
     assert fm["상태"] == "시행"
+    assert fm["첨부파일"] == []
     assert "원본제목" not in fm
+
+
+def test_build_frontmatter_includes_attachment_links():
+    metadata = {
+        "법령명한글": "민법",
+        "법령MST": "253527",
+        "법령ID": "001234",
+        "법령구분": "법률",
+        "법령구분코드": "법률",
+        "소관부처명": "법무부",
+        "공포일자": "20240101",
+        "공포번호": "20000",
+        "시행일자": "20240101",
+        "법령분야": "민사",
+    }
+    attachments = [{
+        "별표번호": "0001",
+        "별표가지번호": "00",
+        "별표구분": "별표",
+        "제목": "수수료",
+        "파일링크": "https://www.law.go.kr/LSW/flDownload.do?flSeq=1",
+        "PDF링크": "https://www.law.go.kr/LSW/flDownload.do?flSeq=2",
+    }]
+
+    fm = build_frontmatter(metadata, attachments)
+
+    assert fm["첨부파일"] == attachments
 
 
 def test_build_frontmatter_unicode_rename():
@@ -585,6 +614,26 @@ def test_law_to_markdown_addenda_only_passes():
     result = law_to_markdown(detail)
     assert "## 부칙" in result
     assert "이 법은 공포일부터 시행한다." in result
+
+
+def test_law_to_markdown_renders_attachments_in_frontmatter():
+    detail = _minimal_detail(
+        articles=[],
+        addenda=[{"부칙내용": "이 법은 공포일부터 시행한다."}],
+    )
+    detail["attachments"] = [{
+        "별표번호": "0001",
+        "별표가지번호": "00",
+        "별표구분": "별표",
+        "제목": "수수료",
+        "파일링크": "https://www.law.go.kr/LSW/flDownload.do?flSeq=1",
+    }]
+
+    result = law_to_markdown(detail)
+    yaml_text = result.split("---\n", 2)[1]
+    fm = yaml.safe_load(yaml_text)
+
+    assert fm["첨부파일"][0]["파일링크"].endswith("flSeq=1")
 
 
 def test_law_to_markdown_articles_only_passes(sample_law_detail):

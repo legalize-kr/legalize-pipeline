@@ -70,11 +70,9 @@ def parse_frontmatter(file_path: Path) -> dict | None:
         return None
 
     try:
-        end = text.index("---", 3)
+        yaml_str, _body = text.removeprefix("---\n").split("\n---\n", 1)
     except ValueError:
         return None
-
-    yaml_str = text[3:end]
     try:
         return yaml.safe_load(yaml_str)
     except yaml.YAMLError as e:
