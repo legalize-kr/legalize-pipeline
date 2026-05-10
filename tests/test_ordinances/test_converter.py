@@ -181,6 +181,46 @@ def test_compute_path_replaces_slashes():
     assert path == "서울특별시/강남구/규칙/A B 규칙/본문.md"
 
 
+def test_compute_path_uses_windows_safe_components():
+    converter.reset_path_registry()
+    path = converter.compute_path({
+        "자치법규종류": "조례",
+        "지자체기관명": "서울특별시",
+        "자치법규명": "테스트 조례.",
+    })
+    assert path == "서울특별시/_본청/조례/테스트 조례/본문.md"
+    assert converter.safe_path_part("NUL.txt") == "_NUL.txt"
+    assert converter.safe_path_part("A|B?C*D") == "A B C D"
+    assert converter.safe_path_part("가" * 59 + " " + "나") == "가" * 59
+
+
+def test_compute_path_adds_id_suffix_when_name_is_truncated():
+    converter.reset_path_registry()
+    path = converter.compute_path({
+        "자치법규종류": "조례",
+        "지자체기관명": "서울특별시",
+        "자치법규명": "가" * 70,
+        "자치법규ID": "123",
+    })
+    name = Path(path).parts[3]
+    assert name.endswith("_123")
+    assert len(name.encode("utf-8")) <= 180
+
+
+def test_compute_path_distinguishes_truncated_same_prefix_names():
+    converter.reset_path_registry()
+    base = {
+        "자치법규종류": "조례",
+        "지자체기관명": "서울특별시",
+        "자치법규명": "가" * 70,
+    }
+    path1 = converter.compute_path({**base, "자치법규ID": "1"}, use_registry=True)
+    path2 = converter.compute_path({**base, "자치법규ID": "2"}, use_registry=True)
+    assert path1 != path2
+    assert Path(path1).parts[3].endswith("_1")
+    assert Path(path2).parts[3].endswith("_2")
+
+
 def test_compute_path_suffixes_collisions():
     converter.reset_path_registry()
     base = {

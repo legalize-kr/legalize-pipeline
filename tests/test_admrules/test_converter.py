@@ -27,6 +27,40 @@ def test_safe_path_part_normalizes_slashes_and_caps_bytes():
     assert len(value.encode("utf-8")) <= 180
 
 
+def test_safe_path_part_uses_windows_safe_components():
+    assert safe_path_part("테스트 고시.") == "테스트 고시"
+    assert safe_path_part("NUL.txt") == "_NUL.txt"
+    assert safe_path_part("A|B?C*D") == "A B C D"
+    assert safe_path_part("가" * 59 + " " + "나") == "가" * 59
+
+
+def test_get_admrule_path_adds_serial_suffix_when_name_is_truncated():
+    reset_path_registry()
+    path = get_admrule_path({
+        "소관부처명": "행정안전부",
+        "행정규칙종류": "고시",
+        "행정규칙명": "가" * 70,
+        "행정규칙일련번호": "123",
+    })
+    name = path.split("/")[-2]
+    assert name.endswith("_123")
+    assert len(name.encode("utf-8")) <= 180
+
+
+def test_get_admrule_path_distinguishes_truncated_same_prefix_names():
+    reset_path_registry()
+    base = {
+        "소관부처명": "행정안전부",
+        "행정규칙종류": "고시",
+        "행정규칙명": "가" * 70,
+    }
+    path1 = get_admrule_path({**base, "행정규칙일련번호": "1"})
+    path2 = get_admrule_path({**base, "행정규칙일련번호": "2"})
+    assert path1 != path2
+    assert path1.split("/")[-2].endswith("_1")
+    assert path2.split("/")[-2].endswith("_2")
+
+
 def test_get_admrule_path_basic():
     reset_path_registry()
     path = get_admrule_path({

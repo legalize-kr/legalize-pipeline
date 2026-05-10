@@ -48,6 +48,15 @@ def _quote_yaml_strings(value):
 
 
 CODE_TO_TYPE = {code: label for label, code in TYPE_CODES.items()}
+_INVALID_PATH_CHARS_RE = re.compile(r"[\x00-\x1f\\/:\0\"'<>|?*]")
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
 
 
 def normalize_ordinance_type(value: str) -> str:
@@ -109,11 +118,37 @@ def _promulgation_date(raw_date: str) -> tuple[datetime.date | str, bool]:
     return _to_date(format_date(raw_date)), False
 
 
-def safe_path_part(value: str, *, max_bytes: int = 180) -> str:
-    text = re.sub(r"[\\/:\0\"'<>]", " ", normalize_text(value)).strip()
-    text = re.sub(r"\s+", " ", text)
+def _truncate_utf8(text: str, max_bytes: int) -> tuple[str, bool]:
+    truncated = False
     while len(text.encode("utf-8")) > max_bytes:
         text = text[:-1]
+        truncated = True
+    return text, truncated
+
+
+def safe_path_part(value: str, *, max_bytes: int = 180, suffix_on_truncate: str = "") -> str:
+    text = _INVALID_PATH_CHARS_RE.sub(" ", normalize_text(value)).strip()
+    text = re.sub(r"\s+", " ", text)
+    text = text.rstrip(" .")
+    suffix = ""
+    if suffix_on_truncate:
+        suffix_part = safe_path_part(suffix_on_truncate, max_bytes=max_bytes)
+        if suffix_part != "_":
+            suffix = f"_{suffix_part}"
+        while suffix and len(suffix.encode("utf-8")) > max_bytes:
+            suffix_part = suffix_part[:-1].rstrip(" .")
+            suffix = f"_{suffix_part}" if suffix_part else ""
+    if suffix and len(text.encode("utf-8")) > max_bytes:
+        text, _ = _truncate_utf8(text, max_bytes - len(suffix.encode("utf-8")))
+        text = f"{text.rstrip(' .')}{suffix}" if text.rstrip(" .") else suffix
+    else:
+        text, _ = _truncate_utf8(text, max_bytes)
+        text = text.rstrip(" .")
+    if not text:
+        return "_"
+    stem = text.split(".", 1)[0].upper()
+    if stem in _WINDOWS_RESERVED_NAMES:
+        text = f"_{text}"
     return text or "_"
 
 
@@ -226,11 +261,11 @@ def compute_path(metadata: dict, *, use_registry: bool = False) -> str:
     if ordinance_type not in STORAGE_TYPES:
         raise UnsupportedOrdinanceType(ordinance_type)
     gwangyeok, gicho = split_jurisdiction(metadata.get("지자체기관명", ""))
-    name = safe_path_part(metadata.get("자치법규명", ""))
+    ordinance_id = safe_path_part(str(metadata.get("자치법규ID", "")))
+    name = safe_path_part(metadata.get("자치법규명", ""), suffix_on_truncate=ordinance_id)
     base = f"{safe_path_part(gwangyeok)}/{safe_path_part(gicho)}/{ordinance_type}/{name}/본문.md"
     if not use_registry:
         return base
-    ordinance_id = safe_path_part(str(metadata.get("자치법규ID", "")))
     existing = _assigned_paths.get(base)
     if existing is None or existing == ordinance_id:
         _assigned_paths[base] = ordinance_id

@@ -10,6 +10,15 @@ import yaml
 from .config import VALID_ADMRULE_TYPES
 
 _MAX_STEM_BYTES = 180
+_INVALID_PATH_CHARS_RE = re.compile(r"[\x00-\x1f\\/:\0\"'<>|?*]")
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
 
 _MINISTRY_RENAME_MAP = {
     "문화재청": "국가유산청",
@@ -208,18 +217,40 @@ def _clamp_issue_date(raw_date: str) -> tuple[datetime.date | str, bool]:
     return value, False
 
 
-def _truncate_utf8(text: str, max_bytes: int = _MAX_STEM_BYTES) -> str:
+def _truncate_utf8(text: str, max_bytes: int = _MAX_STEM_BYTES) -> tuple[str, bool]:
     value = text
+    truncated = False
     while len(value.encode("utf-8")) > max_bytes:
         value = value[:-1]
-    return value.rstrip()
+        truncated = True
+    return value.rstrip(), truncated
 
 
-def safe_path_part(text: str) -> str:
+def safe_path_part(text: str, *, suffix_on_truncate: str = "") -> str:
     """Normalize a path component while preserving Korean readability."""
-    normalized = normalize_nfc(re.sub(r"[\\/:\0\"'<>]", " ", text)).strip()
+    normalized = normalize_nfc(_INVALID_PATH_CHARS_RE.sub(" ", text)).strip()
     normalized = re.sub(r"\s+", " ", normalized)
-    return _truncate_utf8(normalized or "_")
+    normalized = normalized.rstrip(" .")
+    suffix = ""
+    if suffix_on_truncate:
+        suffix_part = safe_path_part(suffix_on_truncate)
+        if suffix_part != "_":
+            suffix = f"_{suffix_part}"
+        while suffix and len(suffix.encode("utf-8")) > _MAX_STEM_BYTES:
+            suffix_part = suffix_part[:-1].rstrip(" .")
+            suffix = f"_{suffix_part}" if suffix_part else ""
+    if suffix and len(normalized.encode("utf-8")) > _MAX_STEM_BYTES:
+        normalized, _ = _truncate_utf8(normalized, _MAX_STEM_BYTES - len(suffix.encode("utf-8")))
+        normalized = f"{normalized.rstrip(' .')}{suffix}" if normalized.rstrip(" .") else suffix
+    else:
+        normalized, _ = _truncate_utf8(normalized)
+        normalized = normalized.rstrip(" .")
+    if not normalized:
+        return "_"
+    stem = normalized.split(".", 1)[0].upper()
+    if stem in _WINDOWS_RESERVED_NAMES:
+        normalized = f"_{normalized}"
+    return normalized
 
 
 def normalize_ministry_name(text: str, fallback: str = "") -> str:
@@ -373,9 +404,9 @@ def get_admrule_path(metadata: dict) -> str:
         org_parts = [safe_path_part(top or agency)]
     if len(org_parts) == 1 and agency == top:
         org_parts.append("_본부")
-    rule_type = safe_path_part(metadata.get("행정규칙종류", ""))
-    name = safe_path_part(metadata.get("행정규칙명", ""))
     serial = str(metadata.get("행정규칙일련번호", ""))
+    rule_type = safe_path_part(metadata.get("행정규칙종류", ""))
+    name = safe_path_part(metadata.get("행정규칙명", ""), suffix_on_truncate=serial)
     org_prefix = "/".join(org_parts)
     base = f"{org_prefix}/{rule_type}/{name}/본문.md"
     existing = _assigned_paths.get(base)
