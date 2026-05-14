@@ -84,6 +84,35 @@ def test_commit_with_historical_date_clamps_pre_epoch(tmp_path: Path):
     assert captured_envs[0]["GIT_AUTHOR_DATE"].startswith("1970-01-01")
 
 
+def test_commit_with_historical_date_sets_author_and_committer(tmp_path: Path):
+    file_path = Path("kr/민법/법률.md")
+    (tmp_path / file_path.parent).mkdir(parents=True)
+    (tmp_path / file_path).write_text("# 민법", encoding="utf-8")
+    captured_envs = []
+
+    def side_effect(args, **kwargs):
+        if "commit" in args:
+            captured_envs.append(kwargs.get("env", {}))
+        if "status" in args:
+            return _make_run_result("M kr/민법/법률.md")
+        return _make_run_result("")
+
+    with patch("subprocess.run", side_effect=side_effect):
+        assert git_engine.commit_with_historical_date(
+            tmp_path,
+            [file_path],
+            "msg",
+            "2024-01-01",
+            author="legalize-kr-bot <bot@legalize.kr>",
+        ) is True
+
+    env = captured_envs[0]
+    assert env["GIT_AUTHOR_NAME"] == "legalize-kr-bot"
+    assert env["GIT_AUTHOR_EMAIL"] == "bot@legalize.kr"
+    assert env["GIT_COMMITTER_NAME"] == "legalize-kr-bot"
+    assert env["GIT_COMMITTER_EMAIL"] == "bot@legalize.kr"
+
+
 def test_commit_with_historical_date_allows_tracked_deletion(tmp_path: Path):
     file_path = Path("old.md")
     run_results = [

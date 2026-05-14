@@ -3,6 +3,7 @@
 import datetime as dt
 import logging
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -59,6 +60,31 @@ def _coerce_date(value: dt.datetime | dt.date | str) -> str:
     return max(date, "1970-01-01")
 
 
+def _parse_author(author: str) -> tuple[str, str]:
+    match = re.fullmatch(r"\s*(.+?)\s*<([^<>]+)>\s*", author)
+    if not match:
+        raise ValueError(f"Invalid git author format: {author!r}")
+    return match.group(1), match.group(2)
+
+
+def historical_commit_env(
+    date: dt.datetime | dt.date | str,
+    *,
+    author: str = BOT_AUTHOR,
+) -> dict[str, str]:
+    """Return deterministic author/committer env for historical commits."""
+    iso_date = f"{_coerce_date(date)}T12:00:00+09:00"
+    name, email = _parse_author(author)
+    return {
+        "GIT_AUTHOR_NAME": name,
+        "GIT_AUTHOR_EMAIL": email,
+        "GIT_AUTHOR_DATE": iso_date,
+        "GIT_COMMITTER_NAME": name,
+        "GIT_COMMITTER_EMAIL": email,
+        "GIT_COMMITTER_DATE": iso_date,
+    }
+
+
 def _relative_paths(repo_dir: Path, file_paths: list[Path]) -> list[Path]:
     rel_paths = []
     for path in file_paths:
@@ -96,8 +122,7 @@ def commit_with_historical_date(
         logger.info("No changes for %s, skipping", ", ".join(str(p) for p in rel_paths))
         return False
 
-    iso_date = f"{_coerce_date(date)}T12:00:00+09:00"
-    env = {"GIT_AUTHOR_DATE": iso_date, "GIT_COMMITTER_DATE": iso_date}
+    env = historical_commit_env(date, author=author)
     _run_git(
         "commit",
         "-m",
@@ -109,5 +134,5 @@ def commit_with_historical_date(
         cwd=repo_dir,
         env=env,
     )
-    logger.info("Committed %s date=%s", ", ".join(str(p) for p in rel_paths), iso_date)
+    logger.info("Committed %s date=%s", ", ".join(str(p) for p in rel_paths), env["GIT_AUTHOR_DATE"])
     return True
