@@ -27,6 +27,11 @@ from .git_engine import commit_precedent
 logger = logging.getLogger(__name__)
 
 
+def _entry_commit_sort_key(entry: tuple[dict, str]) -> tuple[str, str]:
+    parsed, _path = entry
+    return (parsed.get("선고일자", "") or "99999999", str(parsed.get("판례정보일련번호", "") or ""))
+
+
 def _write_task(
     parsed: dict,
     path: str,
@@ -112,8 +117,8 @@ def run(
     logger.info(f"Composite-key collisions (serial-suffixed paths): {composite_collisions}")
 
     if git:
-        # Sort by 선고일자 for chronological commit history
-        entries.sort(key=lambda e: e[0].get("선고일자", "") or "99999999")
+        # Sort by 선고일자 and serial for deterministic chronological history.
+        entries.sort(key=_entry_commit_sort_key)
 
     # Phase 2: write (+ optional git commit)
     counter = Counter()

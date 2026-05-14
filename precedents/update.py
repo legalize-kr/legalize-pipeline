@@ -40,6 +40,10 @@ def _date_range(days: int) -> str:
     return f"{start.strftime('%Y%m%d')}~{end.strftime('%Y%m%d')}"
 
 
+def _precedent_sort_key(prec: dict) -> tuple[str, str]:
+    return (prec.get("선고일자", "") or "99999999", str(prec.get("판례일련번호", "") or ""))
+
+
 def _collect_recent_ids(days: int) -> list[dict]:
     """Search API for precedents with 선고일자 in the last N days."""
     date_range = _date_range(days)
@@ -68,6 +72,7 @@ def _collect_recent_ids(days: int) -> list[dict]:
             break
         page += 1
 
+    all_precs.sort(key=_precedent_sort_key)
     return all_precs
 
 
