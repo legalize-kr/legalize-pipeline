@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from core.config import BOT_AUTHOR
+from core.git_engine import historical_commit_env
 
 logger = logging.getLogger(__name__)
 
@@ -86,11 +87,7 @@ def commit_precedent(
         d = f"{date_raw[:4]}-{date_raw[4:6]}-{date_raw[6:8]}"
         date = d if d >= "1970-01-01" else "1970-01-01"
 
-    iso_date = f"{date}T12:00:00+09:00"
-    env = {
-        "GIT_AUTHOR_DATE": iso_date,
-        "GIT_COMMITTER_DATE": iso_date,
-    }
+    env = historical_commit_env(date, author=BOT_AUTHOR)
 
     # Commit message
     title = f"판례: {case_name}" if case_name else f"판례: {case_no}"

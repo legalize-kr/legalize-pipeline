@@ -22,11 +22,13 @@ from .converter import (
     reset_path_registry,
 )
 from .git_engine import _run_git
+from core.git_engine import historical_commit_env
 from .import_laws import build_commit_msg
 
 logger = logging.getLogger(__name__)
 
 INFRA_AUTHOR = BOT_AUTHOR
+DEFAULT_INFRA_DATE = "2026-03-30"
 
 # Files/dirs to include in the infra commit (relative to LAW_REPO)
 INFRA_PATHS = [
@@ -58,16 +60,13 @@ def commit_infra(dry_run: bool = False, infra_date: str | None = None) -> str | 
         logger.info("[DRY-RUN] Infra commit with %d paths", len(INFRA_PATHS))
         return None
 
-    env = {}
-    if infra_date:
-        env["GIT_AUTHOR_DATE"] = infra_date
-        env["GIT_COMMITTER_DATE"] = infra_date
+    env = historical_commit_env(infra_date or DEFAULT_INFRA_DATE, author=INFRA_AUTHOR)
 
     _run_git(
         "commit",
         "-m", "feat: 법령 수집·변환·검증 파이프라인 및 웹사이트 구성",
         "--author", INFRA_AUTHOR,
-        env=env or None,
+        env=env,
     )
     commit_hash = _run_git("rev-parse", "HEAD")
     logger.info(f"Infra committed [{commit_hash[:8]}]")
@@ -169,18 +168,13 @@ def rebuild_law_commits(entries: list[tuple[str, dict]], dry_run: bool = False) 
             # Historical date
             if prom_date < "1970-01-01":
                 prom_date = "1970-01-01"
-            iso_date = f"{prom_date}T12:00:00+09:00"
-
             _run_git("add", file_path)
             _run_git(
                 "commit",
                 "-m", commit_msg,
                 "--author", BOT_AUTHOR,
                 "--", file_path,
-                env={
-                    "GIT_AUTHOR_DATE": iso_date,
-                    "GIT_COMMITTER_DATE": iso_date,
-                },
+                env=historical_commit_env(prom_date, author=BOT_AUTHOR),
             )
             committed += 1
 
@@ -221,6 +215,7 @@ def commit_metadata(dry_run: bool = False) -> str | None:
         "commit",
         "-m", "chore: generate metadata.json",
         "--author", BOT_AUTHOR,
+        env=historical_commit_env(DEFAULT_INFRA_DATE, author=BOT_AUTHOR),
     )
     commit_hash = _run_git("rev-parse", "HEAD")
     logger.info(f"Metadata committed [{commit_hash[:8]}]")
