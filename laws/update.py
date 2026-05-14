@@ -107,7 +107,8 @@ def update(
     reset_path_registry()
 
     last = get_last_update()
-    since = last.replace("-", "") if last else (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+    fallback_since = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+    since = min(last.replace("-", ""), fallback_since) if last else fallback_since
     today = datetime.now().strftime("%Y%m%d")
 
     logger.info(f"Searching amendments from {since} to {today}")
@@ -169,9 +170,10 @@ def update(
             f"(errors={history_errors})"
         )
 
-    # Filter out already-processed MSTs via checkpoint (in-memory, no git log)
-    processed = get_processed_msts()
-    new_laws = [law for law in all_laws if law["법령일련번호"] and law["법령일련번호"] not in processed]
+    # Checkpoints are only a cursor for the search window. Commit existence
+    # must come from Git so a freshly cloned/generated result repo converges
+    # even if the local checkpoint is stale or ahead.
+    new_laws = [law for law in all_laws if law["법령일련번호"]]
     new_laws.sort(key=lambda x: entry_sort_key(
         x.get("공포일자", ""),
         x.get("법령명한글", ""),
@@ -179,7 +181,7 @@ def update(
         x.get("법령일련번호", ""),
     ))
 
-    logger.info(f"Found {len(all_laws)} results, {len(new_laws)} new after checkpoint filter")
+    logger.info(f"Found {len(all_laws)} results, {len(new_laws)} commit candidates")
 
     committed = 0
     errors = 0
@@ -224,7 +226,7 @@ def update(
             if not prom_date or len(prom_date) != 10:
                 prom_date = "2000-01-01"
 
-            result = commit_law(file_path, commit_msg, prom_date, mst, skip_dedup=True)
+            result = commit_law(file_path, commit_msg, prom_date, mst, skip_dedup=False)
             if result:
                 mark_processed(mst)
                 committed += 1

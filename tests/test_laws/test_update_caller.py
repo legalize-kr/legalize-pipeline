@@ -176,3 +176,51 @@ def test_empty_body_in_update_quarantines_existing_markdown(tmp_path, monkeypatc
     # .failed_msts.json should record reason=empty_body
     failed_data = json.loads((tmp_path / ".failed_msts.json").read_text(encoding="utf-8"))
     assert failed_data["failed_msts"]["123"]["reason"] == "empty_body"
+
+
+def test_update_uses_git_dedup_instead_of_checkpoint_filter(tmp_path, monkeypatch):
+    import laws.update as update_mod
+    import laws.converter as conv
+    import laws.cache as law_cache
+
+    kr_dir = tmp_path / "kr"
+    kr_dir.mkdir()
+    monkeypatch.setattr(update_mod, "KR_DIR", kr_dir)
+    monkeypatch.setattr(update_mod, "LAW_API_KEY", "test-key")
+    monkeypatch.setattr(conv, "KR_DIR", kr_dir, raising=False)
+    monkeypatch.setattr(law_cache, "CACHE_DIR", tmp_path / ".cache")
+
+    monkeypatch.setattr(update_mod, "search_laws", lambda **kw: {
+        "laws": [{"법령일련번호": "123", "법령명한글": "foo법", "공포일자": "20240101"}],
+        "totalCnt": 1,
+    })
+    monkeypatch.setattr(update_mod, "get_law_history", lambda name, refresh=False: [])
+    monkeypatch.setattr(update_mod, "get_law_detail", lambda mst: {
+        "metadata": {
+            "법령명한글": "foo법",
+            "법령MST": "123",
+            "법령ID": "",
+            "법령구분": "법률",
+            "공포일자": "20240101",
+        },
+        "articles": [{"조문번호": "1"}],
+    })
+    monkeypatch.setattr(update_mod, "law_to_markdown", lambda detail: "# foo")
+    monkeypatch.setattr(update_mod, "get_law_path", lambda name, law_type, law_id="": f"kr/{name}/법률.md")
+    monkeypatch.setattr(update_mod, "reset_path_registry", lambda: None)
+    monkeypatch.setattr(update_mod, "get_last_update", lambda: None)
+    monkeypatch.setattr(update_mod, "get_processed_msts", lambda: {"123"})
+    monkeypatch.setattr(update_mod, "mark_processed", lambda mst: None)
+    monkeypatch.setattr(update_mod, "set_last_update", lambda d: None)
+
+    calls = []
+
+    def commit_stub(*args, **kwargs):
+        calls.append((args, kwargs))
+        return True
+
+    monkeypatch.setattr(update_mod, "commit_law", commit_stub)
+
+    assert update_mod.update(days=1, dry_run=False) == 1
+    assert calls
+    assert calls[0][1]["skip_dedup"] is False
