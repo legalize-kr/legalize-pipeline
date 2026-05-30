@@ -16,7 +16,6 @@ env:
   WORKSPACE_ROOT: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT
   LEGALIZE_CACHE_DIR: ${{ secrets.LEGALIZE_CACHE_DIR }}
   LEGALIZE_KR_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-kr
-  LEGALIZE_WEB_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-web
   PIPELINE_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
 
 jobs:
@@ -37,13 +36,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
-
-      - name: Checkout docs repo
-        uses: actions/checkout@v6
-        with:
-          repository: legalize-kr/legalize-web
-          token: ${{ secrets.REPO_PAT }}
-          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-web
 
       - name: Link persistent cache
         run: |
@@ -92,22 +84,13 @@ jobs:
         working-directory: ${{ env.LEGALIZE_KR_REPO }}
         run: |
           if [ -n "$(git log origin/main..HEAD --oneline)" ]; then
-            git push
+            for attempt in 1 2 3; do
+              git push && exit 0
+              if [ "$attempt" = 3 ]; then
+                exit 1
+              fi
+              sleep $((attempt * 10))
+            done
           else
             echo "No new commits to push"
-          fi
-
-      - name: Update docs stats
-        run: |
-          if [ -f "$LEGALIZE_KR_REPO/stats.json" ]; then
-            cd "$LEGALIZE_WEB_REPO"
-            git fetch origin main
-            git reset --hard origin/main
-            cp "$LEGALIZE_KR_REPO/stats.json" stats.json
-            git add stats.json
-            git diff --staged --quiet && echo "No docs changes" && exit 0
-            git config user.name "legalize-kr-bot"
-            git config user.email "bot@legalize.kr"
-            git commit --author="legalize-kr-bot <bot@legalize.kr>" -m "chore: update stats.json"
-            git push origin main
           fi

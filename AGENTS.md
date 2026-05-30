@@ -14,7 +14,7 @@
 | `legalize-kr/legalize-kr` | 법령 데이터 (`kr/{법령명}/*.md`, `metadata.json`) |
 | `legalize-kr/legalize-pipeline` | 수집·변환·검증 파이프라인 (이 저장소) |
 | `legalize-kr/legalize-web` | 웹사이트 (`legalize.kr`, GitHub Pages) |
-| `legalize-kr/compiler` | rebuild용 네이티브 컴파일러 (Rust). `full-laws-import.yml`이 릴리즈 바이너리가 있으면 `laws.rebuild`보다 먼저 사용하고, 없을 때만 Python `rebuild.py`로 폴백 |
+| `legalize-kr/compiler` | rebuild용 네이티브 컴파일러 (Rust). 로컬에서 전체 rebuild를 수행할 때 사용 |
 | `legalize-kr/precedent-kr` | 판례 데이터 (`{사건종류}/{법원등급}/{법원명}_{선고일자}_{사건번호}.md`, force-push 가능) |
 | `legalize-kr/admrule-kr` | 행정규칙 데이터 (`{기관경로...}/{행정규칙종류}/{행정규칙명}/본문.md`, force-push 가능) |
 | `legalize-kr/ordinance-kr` | 자치법규 데이터 (`{광역}/{기초}/{자치법규종류}/{자치법규명}/본문.md`, force-push 가능) |
@@ -51,7 +51,7 @@ precedents/            # 판례 파이프라인 (python -m precedents.fetch_cach
   fetch_cache.py       # 전체 판례 목록 수집 + 상세 XML 병렬 캐시
   converter.py         # XML → Markdown 변환 (frontmatter, 경로 계산, 충돌 처리)
   import_precedents.py # 캐시 → Markdown 일괄 변환 (병렬 쓰기)
-.github/workflows/     # CI/CD (daily-laws-update.yml, daily-precedent-update.yml, full-laws-import.yml)
+.github/workflows/     # CI/CD (daily-laws-update.yml, daily-precedent-update.yml 등)
 ```
 
 ### 런타임 워크스페이스
@@ -67,7 +67,7 @@ CI에서는 `LEGALIZE-KR-WORKSPACE-ROOT/` 아래에 로컬과 같은 sibling che
   legalize-kr/                          # 법령 데이터 저장소
     kr/{법령명}/
     metadata.json
-    stats.json                          # legalize-web으로 복사
+    stats.json                          # 법령 데이터 저장소 내부 통계
   precedent-kr/
   admrule-kr/
   ordinance-kr/
@@ -112,9 +112,8 @@ precedents/import_precedents.py (단일 스레드 파싱 → 병렬 쓰기)
 precedent-kr/{사건종류}/{법원등급}/{법원명}_{선고일자}_{사건번호}.md
 ```
 
-> 판례 통계(`precedent-stats.json`)는 저장소 내부에 생성하지 않고, 배포 시점에
-> `legalize-web` 내부에서 `precedent-kr` 디렉토리 구조만 스캔하여 직접 생성합니다
-> (`.github/workflows/daily-precedent-update.yml`의 `Regenerate precedent-stats.json` 스텝).
+> 판례 통계는 저장소 내부에 생성하지 않고, `legalize-web` 빌드 시점에
+> `precedent-kr` 디렉토리 구조를 스캔하여 `stats-precedents.json`으로 생성합니다.
 > Rust 재구현(`compiler-for-precedent`)과의 동작 일치를 위해 판례 저장소에는
 > `metadata.json`/`stats.json`을 더 이상 만들지 않습니다.
 
@@ -160,16 +159,10 @@ precedent-kr/{사건종류}/{법원등급}/{법원명}_{선고일자}_{사건번
 
 1. `legalize-kr/legalize-kr` → `LEGALIZE-KR-WORKSPACE-ROOT/legalize-kr/`
 2. `legalize-kr/legalize-pipeline` → `LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline/`
-3. `legalize-kr/legalize-web` → `LEGALIZE-KR-WORKSPACE-ROOT/legalize-web/`
-4. `LEGALIZE_CACHE_DIR` secret으로 주입된 영속 캐시 → `LEGALIZE-KR-WORKSPACE-ROOT/.cache` 심볼릭 링크
-5. `python -m laws.update --days 14` 실행 (14일 lookback)
-6. `python -m laws.validate` 실행
-7. 데이터 저장소 push
-8. `stats.json` → `legalize-web/` 복사 및 push
-
-### full-laws-import.yml (수동 실행)
-
-동일 체크아웃 → 캐시 확인/수집 → compiler 또는 `python -m laws.rebuild` → validate → force push
+3. `LEGALIZE_CACHE_DIR` secret으로 주입된 영속 캐시 → `LEGALIZE-KR-WORKSPACE-ROOT/.cache` 심볼릭 링크
+4. `python -m laws.update --days 14` 실행 (14일 lookback)
+5. `python -m laws.validate` 실행
+6. 데이터 저장소 push
 
 ## Commit Convention
 
@@ -338,7 +331,7 @@ python -m precedents.fetch_cache --workers 3
 
 ## History Allowlist & Failure Baseline
 
-### full-laws-import.yml 불변성 실패 대응
+### 전체 법령 import 불변성 실패 대응
 
 - 에러 메시지의 stem 이름을 검사합니다.
 - Unicode/긴 이름 클래스면 `laws/known_empty_history.yaml`에 추가 (추적 이슈, 3~9개월 만료 설정).

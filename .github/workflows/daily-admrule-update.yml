@@ -88,7 +88,13 @@ jobs:
         working-directory: ${{ env.ADMRULE_KR_REPO }}
         run: |
           if [ -n "$(git log origin/main..HEAD --oneline)" ]; then
-            git push
+            for attempt in 1 2 3; do
+              git push && exit 0
+              if [ "$attempt" = 3 ]; then
+                exit 1
+              fi
+              sleep $((attempt * 10))
+            done
           else
             echo "No new commits to push"
           fi

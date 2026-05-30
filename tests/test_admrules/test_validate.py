@@ -30,6 +30,31 @@ def test_validate_frontmatter_accepts_valid_markdown(tmp_path: Path):
     assert validate_frontmatter(path) == []
 
 
+def test_validate_frontmatter_accepts_rule_type(tmp_path: Path):
+    path = tmp_path / "본문.md"
+    path.write_text(
+        """---
+행정규칙ID: 'ABC'
+행정규칙일련번호: '123'
+행정규칙명: 국립과천과학관 기본운영규정
+행정규칙종류: 규칙
+상위기관명: 과학기술정보통신부
+소관부처명: 국립과천과학관
+기관코드: null
+발령일자: 2026-05-26
+본문출처: api-text
+출처: https://www.law.go.kr/행정규칙/국립과천과학관기본운영규정
+첨부파일: []
+발령일자보정: false
+---
+
+본문
+""",
+        encoding="utf-8",
+    )
+    assert validate_frontmatter(path) == []
+
+
 def test_validate_frontmatter_rejects_invalid_type(tmp_path: Path):
     path = tmp_path / "본문.md"
     path.write_text(

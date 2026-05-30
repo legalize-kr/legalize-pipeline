@@ -21,7 +21,6 @@ env:
   WORKSPACE_ROOT: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT
   LEGALIZE_CACHE_DIR: ${{ secrets.LEGALIZE_CACHE_DIR }}
   PRECEDENT_KR_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/precedent-kr
-  LEGALIZE_WEB_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-web
   PIPELINE_REPO: ${{ github.workspace }}/LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
 
 jobs:
@@ -42,13 +41,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-pipeline
-
-      - name: Checkout docs repo
-        uses: actions/checkout@v6
-        with:
-          repository: legalize-kr/legalize-web
-          token: ${{ secrets.REPO_PAT }}
-          path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-web
 
       - name: Link persistent cache
         run: |
@@ -118,54 +110,13 @@ jobs:
         working-directory: ${{ env.PRECEDENT_KR_REPO }}
         run: |
           if [ -n "$(git log origin/main..HEAD --oneline)" ]; then
-            git push
+            for attempt in 1 2 3; do
+              git push && exit 0
+              if [ "$attempt" = 3 ]; then
+                exit 1
+              fi
+              sleep $((attempt * 10))
+            done
           else
             echo "No new commits to push"
           fi
-
-      - name: Regenerate precedent-stats.json in docs repo
-        run: |
-          cd "$LEGALIZE_WEB_REPO"
-          git fetch origin main
-          git reset --hard origin/main
-          python3 - <<'PYTHON_EOF'
-          import json
-          import os
-          from collections import Counter
-          from datetime import datetime, timezone
-          from pathlib import Path
-
-          root = Path(os.environ["PRECEDENT_KR_REPO"])
-          files = [
-              p for p in root.rglob("*.md")
-              if ".git" not in p.parts
-              and len(p.relative_to(root).parts) == 3
-          ]
-          case_types: Counter = Counter()
-          courts: Counter = Counter()
-          for p in files:
-              case_type, court_tier, _ = p.relative_to(root).parts
-              case_types[case_type] += 1
-              courts[court_tier] += 1
-
-          stats = {
-              "total": len(files),
-              "courts": dict(sorted(courts.items())),
-              "case_types": dict(sorted(case_types.items())),
-              "skipped_errors": 0,
-              "generated_at": datetime.now(timezone.utc).isoformat(),
-          }
-          Path("precedent-stats.json").write_text(
-              json.dumps(stats, ensure_ascii=False, indent=2),
-              encoding="utf-8",
-          )
-          PYTHON_EOF
-          git add precedent-stats.json
-          if git diff --staged --quiet; then
-            echo "No docs changes"
-            exit 0
-          fi
-          git config user.name "legalize-kr-bot"
-          git config user.email "bot@legalize.kr"
-          git commit --author="legalize-kr-bot <bot@legalize.kr>" -m "chore: update precedent-stats.json"
-          git push origin main

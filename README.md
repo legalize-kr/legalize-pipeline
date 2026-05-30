@@ -261,12 +261,6 @@ ORDINANCE_KR_REPO=/path/to/ordinance-kr
 3. `python -m laws.validate` 검증
 4. 변경사항 자동 push
 
-### full-laws-import.yml (수동 실행)
-
-1. 캐시 확인/수집
-2. `python -m laws.rebuild` 실행
-3. 검증 후 force push
-
 ## API
 
 - **데이터 소스**: [국가법령정보센터 OpenAPI](https://open.law.go.kr)
