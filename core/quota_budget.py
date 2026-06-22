@@ -6,6 +6,7 @@ as an authoritative upstream quota.
 """
 
 import json
+import math
 import os
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +14,16 @@ from pathlib import Path
 from .atomic_io import atomic_write_text
 from .config import CACHE_ROOT
 
-DEFAULT_DAILY_BUDGET = int(os.environ.get("LAW_API_DAILY_BUDGET", "100000"))
+
+def _parse_budget(value: str | None) -> float:
+    """Parse a daily budget, accepting ``inf``/``unlimited`` to disable the guard."""
+    text = str(value if value is not None else "100000").strip().lower()
+    if text in {"inf", "infinity", "unlimited"}:
+        return math.inf
+    return int(text)
+
+
+DEFAULT_DAILY_BUDGET = _parse_budget(os.environ.get("LAW_API_DAILY_BUDGET"))
 STATE_FILE = CACHE_ROOT / "law_api_quota_budget.json"
 
 
@@ -47,10 +57,12 @@ def ensure_headroom(
     *,
     expected_requests: int,
     corpus: str,
-    daily_budget: int = DEFAULT_DAILY_BUDGET,
+    daily_budget: float = DEFAULT_DAILY_BUDGET,
     path: Path = STATE_FILE,
     min_headroom_ratio: float = 0.30,
 ) -> None:
+    if math.isinf(daily_budget):
+        return
     used = used_today(path)
     projected = used + int(expected_requests)
     limit = int(daily_budget * (1 - min_headroom_ratio))

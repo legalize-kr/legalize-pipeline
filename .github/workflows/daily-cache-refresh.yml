@@ -94,7 +94,7 @@ jobs:
         working-directory: ${{ env.PIPELINE_REPO }}
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
-          LAW_API_DAILY_BUDGET: 300000
+          LAW_API_DAILY_BUDGET: inf
         run: |
           . "$WORKSPACE_ROOT/.venv/bin/activate"
           python -m ordinances.fetch_cache
