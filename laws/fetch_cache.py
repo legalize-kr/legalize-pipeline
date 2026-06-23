@@ -18,6 +18,7 @@ import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 from . import cache
 from .api_client import get_law_detail, get_law_history, search_laws
@@ -26,6 +27,32 @@ from .history_allowlist import filter_and_check
 from core.counter import Counter
 
 logger = logging.getLogger(__name__)
+
+
+def _load_history_seed_names(path: Path | None) -> list[str]:
+    """Load extra law names whose histories should be fetched explicitly."""
+
+    if path is None:
+        return []
+    names: list[str] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        name = raw.strip()
+        if not name or name.startswith("#"):
+            continue
+        names.append(name)
+    return names
+
+
+def _extend_unique_names(names: list[str], extra_names: list[str]) -> list[str]:
+    """Append extra names while preserving order and existing deduplication."""
+
+    seen = set(names)
+    result = list(names)
+    for name in extra_names:
+        if name and name not in seen:
+            seen.add(name)
+            result.append(name)
+    return result
 
 
 def fetch_all_msts() -> list[dict]:
@@ -151,6 +178,14 @@ def main():
         ),
     )
     parser.add_argument(
+        "--history-name-file",
+        type=Path,
+        help=(
+            "Text file with additional law names to use as explicit lsHistory "
+            "seeds, one name per line. Blank lines and # comments are ignored."
+        ),
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=CONCURRENT_WORKERS,
@@ -220,6 +255,16 @@ def main():
 
     if args.limit:
         unique_names = unique_names[:args.limit]
+
+    seed_names = _load_history_seed_names(args.history_name_file)
+    if seed_names:
+        before = len(unique_names)
+        unique_names = _extend_unique_names(unique_names, seed_names)
+        logger.info(
+            "Added %s explicit history seed names (%s new)",
+            len(seed_names),
+            len(unique_names) - before,
+        )
 
     # Step 1: Fetch history concurrently
     logger.info(f"Fetching history for {len(unique_names)} unique law names (workers={workers})...")

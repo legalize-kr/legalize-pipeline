@@ -80,6 +80,12 @@ jobs:
           . "$WORKSPACE_ROOT/.venv/bin/activate"
           python -m laws.audit_cache_vs_repo --fail-on-missing-content --fail-on-new-path-drift
 
+      - name: Audit history MSTs against git
+        working-directory: ${{ env.PIPELINE_REPO }}
+        run: |
+          . "$WORKSPACE_ROOT/.venv/bin/activate"
+          python -m laws.audit_history_vs_git --fail-on-long-term-missing --recent-days 365
+
       - name: Report import failures
         working-directory: ${{ env.PIPELINE_REPO }}
         run: |

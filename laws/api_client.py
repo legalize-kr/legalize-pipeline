@@ -1,6 +1,7 @@
 """Thin wrapper around law.go.kr OpenAPI."""
 
 import logging
+import re
 from xml.etree import ElementTree
 
 import requests
@@ -236,6 +237,12 @@ def _parse_dot_date(raw: str) -> str:
     return raw.replace(".", "")
 
 
+def _normalize_history_law_name(value: str) -> str:
+    """Normalize full law names for lsHistory row matching."""
+
+    return re.sub(r"\s+", "", value.strip())
+
+
 def get_law_history(law_name: str, refresh: bool = False) -> list[dict]:
     """Fetch amendment history for a law via lsHistory HTML endpoint.
 
@@ -249,8 +256,6 @@ def get_law_history(law_name: str, refresh: bool = False) -> list[dict]:
     Returns list of dicts sorted oldest-first, each with:
     법령일련번호, 법령명한글, 제개정구분명, 법령구분, 공포번호, 공포일자, 시행일자
     """
-    import re
-
     if not refresh:
         cached = cache.get_history(law_name)
         if cached:
@@ -260,6 +265,7 @@ def get_law_history(law_name: str, refresh: bool = False) -> list[dict]:
             logging.info("rewriting poisoned empty cache for %s", law_name)
 
     all_entries: list[dict] = []
+    normalized_law_name = _normalize_history_law_name(law_name)
     page = 1
 
     while True:
@@ -284,7 +290,7 @@ def get_law_history(law_name: str, refresh: bool = False) -> list[dict]:
             clean = [re.sub(r"<[^>]+>", "", td).strip() for td in tds]
             # clean: [순번, 법령명, 소관부처, 제개정구분, 법종구분, 공포번호, 공포일자, 시행일자, 현행연혁]
             name = clean[1]
-            if name != law_name:
+            if _normalize_history_law_name(name) != normalized_law_name:
                 continue
             prom_date = _parse_dot_date(clean[6])
             enf_date = _parse_dot_date(clean[7])

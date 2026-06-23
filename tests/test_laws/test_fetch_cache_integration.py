@@ -51,6 +51,25 @@ def _page(rows: list[str]) -> str:
     return "<html><body><table>" + "".join(rows) + "</table></body></html>"
 
 
+def test_history_name_file_adds_seed_not_in_current_search_list(tmp_path: Path):
+    seed_file = tmp_path / "history_seed_names.txt"
+    seed_file.write_text(
+        "# 폐지 법령 seed\n"
+        "\n"
+        "국립사범대학 졸업자 중 교원미임용자 임용 등에 관한 특별법\n"
+        "주택법\n",
+        encoding="utf-8",
+    )
+
+    seed_names = fetch_cache._load_history_seed_names(seed_file)
+    unique_names = fetch_cache._extend_unique_names(["주택법"], seed_names)
+
+    assert unique_names == [
+        "주택법",
+        "국립사범대학 졸업자 중 교원미임용자 임용 등에 관한 특별법",
+    ]
+
+
 @responses_lib.activate
 def test_fetch_cache_history_phase_rewrites_poisoned_cache():
     # Seed poisoned empty cache for 주택법

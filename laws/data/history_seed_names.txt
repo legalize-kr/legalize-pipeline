@@ -1,0 +1,3 @@
+# Extra lsHistory seeds for repealed laws that no longer appear in the current
+# lawSearch list.
+국립사범대학 졸업자 중 교원미임용자 임용 등에 관한 특별법

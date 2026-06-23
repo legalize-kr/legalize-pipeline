@@ -163,6 +163,47 @@ def test_get_law_history_pagination():
 
 
 @responses_lib.activate
+def test_get_law_history_matches_full_name_after_removing_spaces():
+    target = "국립사범대학 졸업자 중 교원미임용자 임용 등에 관한 특별법 시행령"
+    old_spelling = "국립사범대학졸업자중교원미임용자임용등에관한특별법시행령"
+    other_name = "국립사범대학졸업자중교원미임용자임용등에관한특별법"
+    html = f"""<html><body><table>
+<tr>
+  <td>1</td>
+  <td><a href="/lsInfoP.do?MST=62094">{old_spelling}</a></td>
+  <td>교육부</td>
+  <td>제정</td>
+  <td>대통령령</td>
+  <td>제 18473호</td>
+  <td>2004.7.24</td>
+  <td>2004.7.25</td>
+  <td></td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><a href="/lsInfoP.do?MST=59660">{other_name}</a></td>
+  <td>교육부</td>
+  <td>제정</td>
+  <td>법률</td>
+  <td>제 7068호</td>
+  <td>2004.1.20</td>
+  <td>2004.1.20</td>
+  <td></td>
+</tr>
+</table></body></html>"""
+    responses_lib.add(
+        responses_lib.GET, f"{LAW_API_BASE}/lawSearch.do",
+        body=html, status=200,
+        content_type="text/html; charset=utf-8",
+    )
+
+    history = api_client.get_law_history(target)
+
+    assert [entry["법령일련번호"] for entry in history] == ["62094"]
+    assert history[0]["법령명한글"] == old_spelling
+
+
+@responses_lib.activate
 def test_get_law_history_from_cache(tmp_path: Path):
     entries = [{"법령일련번호": "100001", "법령명한글": "민법", "공포일자": "19580222"}]
     law_cache.put_history("민법", entries)
