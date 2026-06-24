@@ -56,11 +56,11 @@ python -m laws.import_laws --csv /path/to/법령검색목록.csv
 #### 캐시 수집 (병렬)
 
 ```bash
-# 모든 현행 법령 캐시
-python -m laws.fetch_cache
+# 모든 현행 법령 + 명시 seed 법령의 상세 XML/개정 이력 캐시
+python -m laws.fetch_cache --refresh-history --history-name-file laws/data/history_seed_names.txt
 
 # 워커 수 조절
-python -m laws.fetch_cache --workers 10
+python -m laws.fetch_cache --refresh-history --history-name-file laws/data/history_seed_names.txt --workers 10
 
 # 테스트 (10건)
 python -m laws.fetch_cache --limit 10
@@ -171,15 +171,13 @@ LEGALIZE-KR-WORKSPACE-ROOT/
 
 ## 캐시 다운로드
 
-사전 수집된 캐시 데이터는 [`legalize-kr/legalize-kr` 릴리즈 페이지](https://github.com/legalize-kr/legalize-kr/releases)에서 다운로드할 수 있습니다:
+사전 수집된 캐시 데이터는 [`legalize-kr/legalize-pipeline` 릴리즈 페이지](https://github.com/legalize-kr/legalize-pipeline/releases)에서
+`cache-YYYYMMDD.tar.zst.part*` 형태의 분할 압축 파일로 배포됩니다.
 
 ```bash
-# 메타 워크스페이스 루트에서
-git clone https://github.com/legalize-kr/legalize-kr.git legalize-kr
-
-# 캐시 압축 해제
-unzip legalize-kr-cache.zip
-# .cache/detail/*.xml, .cache/history/*.json이 생성됩니다
+# 메타 워크스페이스 루트에서 모든 part 파일을 받은 뒤
+cat cache-YYYYMMDD.tar.zst.part* | zstd -d --long=27 -T0 | tar -xf -
+# .cache/detail, .cache/history, .cache/precedent, .cache/admrule, .cache/ordinance, .cache/images가 생성됩니다
 ```
 
 그 후 이 저장소를 체크아웃:

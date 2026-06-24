@@ -47,7 +47,7 @@ def collect_parts(staging: Path) -> list[dict]:
 
 def collect_files(cache_root: Path) -> tuple[list[dict], dict]:
     """Walk cache_root, return (files[], subdirs{}) with per-top-level-subdir aggregation."""
-    known_subdirs = ("detail", "history", "precedent", "images")
+    known_subdirs = ("detail", "history", "precedent", "images", "admrule", "ordinance")
     subdirs: dict[str, dict] = {k: {"file_count": 0, "bytes": 0} for k in known_subdirs}
     files = []
 

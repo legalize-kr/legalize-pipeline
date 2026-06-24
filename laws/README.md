@@ -43,11 +43,11 @@ python -m laws.import_laws --csv /path/to/법령검색목록.csv
 ### API → 캐시 수집
 
 ```bash
-# 모든 현행 법령의 상세 XML + 개정 이력 캐시
-python -m laws.fetch_cache
+# 모든 현행 법령 + 명시 seed 법령의 상세 XML + 개정 이력 캐시
+python -m laws.fetch_cache --refresh-history --history-name-file laws/data/history_seed_names.txt
 
 # 워커 수 조절
-python -m laws.fetch_cache --workers 10
+python -m laws.fetch_cache --refresh-history --history-name-file laws/data/history_seed_names.txt --workers 10
 
 # 테스트용 (10건만)
 python -m laws.fetch_cache --limit 10
