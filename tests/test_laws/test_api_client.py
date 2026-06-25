@@ -239,6 +239,28 @@ def test_get_law_history_raises_on_api_error_response():
 
 
 @responses_lib.activate
+def test_get_law_history_retries_empty_history_response(monkeypatch):
+    monkeypatch.setattr(api_client, "_EMPTY_HISTORY_RETRIES", 2)
+    monkeypatch.setattr(api_client.time, "sleep", lambda _: None)
+    responses_lib.add(
+        responses_lib.GET, f"{LAW_API_BASE}/lawSearch.do",
+        body="<html><body></body></html>", status=200,
+        content_type="text/html; charset=utf-8",
+    )
+    responses_lib.add(
+        responses_lib.GET, f"{LAW_API_BASE}/lawSearch.do",
+        body="<html><body><table>" + _history_row("100001", "민법") + "</table></body></html>",
+        status=200,
+        content_type="text/html; charset=utf-8",
+    )
+
+    history = api_client.get_law_history("민법", refresh=True)
+
+    assert [entry["법령일련번호"] for entry in history] == ["100001"]
+    assert len(responses_lib.calls) == 2
+
+
+@responses_lib.activate
 def test_get_law_history_from_cache(tmp_path: Path):
     entries = [{"법령일련번호": "100001", "법령명한글": "민법", "공포일자": "19580222"}]
     law_cache.put_history("민법", entries)
