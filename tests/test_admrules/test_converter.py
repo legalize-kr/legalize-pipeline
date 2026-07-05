@@ -579,12 +579,14 @@ def test_xml_to_markdown_extracts_frontmatter_and_body():
       <발령일자>20240504</발령일자>
       <시행일자>20240505</시행일자>
       <제개정구분명>일부개정</제개정구분명>
+      <현행여부>Y</현행여부>
       <조문내용>제1조 목적</조문내용>
     </AdmRulService>
     """
     md = xml_to_markdown(xml)
     assert "행정규칙ID: 'ABC'" in md
     assert "본문출처: 'api-text'" in md
+    assert "현행여부: 'Y'" in md
     assert "발령일자: 2024-05-04" in md
     for legacy_key in (
         "source_url:",

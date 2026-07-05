@@ -27,8 +27,9 @@ def commit_admrule_deletion(
     serial_no: str,
     *,
     skip_dedup: bool = False,
+    dedup_grep_key: str | None = None,
 ) -> bool:
-    key = None if skip_dedup else f"행정규칙일련번호: {serial_no}"
+    key = None if skip_dedup else (dedup_grep_key or f"행정규칙일련번호: {serial_no}")
     return commit_with_historical_date(
         repo_dir,
         [Path(file_path)],

@@ -415,6 +415,7 @@ def _metadata_from_xml(root: ElementTree.Element) -> dict:
         "제개정구분": _find_first(root, ("제개정구분명",)),
         "제개정구분코드": _find_first(root, ("제개정구분코드",)),
         "현행연혁구분": _find_first(root, ("현행연혁구분",)),
+        "현행여부": _find_first(root, ("현행여부",)),
     }
     if raw_ministry and not _is_missing_org_token(raw_ministry.strip()) and raw_ministry != ministry:
         metadata["소관부처명_원문"] = raw_ministry
@@ -480,6 +481,7 @@ def build_frontmatter(metadata: dict, attachments: list[dict] | None = None) -> 
         "제개정구분": metadata.get("제개정구분", ""),
         "제개정구분코드": _QuotedStr(str(metadata.get("제개정구분코드", ""))),
         "현행연혁구분": metadata.get("현행연혁구분", ""),
+        "현행여부": _QuotedStr(str(metadata.get("현행여부", ""))),
         "본문출처": metadata.get("body_source") or "api-text",
         "출처": source_url,
         "첨부파일": attachments or [],

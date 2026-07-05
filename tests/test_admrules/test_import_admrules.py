@@ -161,6 +161,130 @@ def test_import_from_cache_deletes_repealed_rule_from_head(tmp_path, monkeypatch
     assert not (tmp_path / "행정안전부/소방청/고시/소방 고시/본문.md").exists()
 
 
+def test_import_from_cache_keeps_rule_when_non_current_revision_is_not_latest(tmp_path, monkeypatch):
+    old_xml = """
+    <AdmRulService>
+      <행정규칙ID>ABC</행정규칙ID>
+      <행정규칙일련번호>111</행정규칙일련번호>
+      <행정규칙명>현행 복귀 고시</행정규칙명>
+      <행정규칙종류>고시</행정규칙종류>
+      <소관부처명>행정안전부</소관부처명>
+      <발령일자>20240101</발령일자>
+      <현행여부>N</현행여부>
+      <조문내용>중간 본문</조문내용>
+    </AdmRulService>
+    """.encode("utf-8")
+    latest_xml = """
+    <AdmRulService>
+      <행정규칙ID>ABC</행정규칙ID>
+      <행정규칙일련번호>222</행정규칙일련번호>
+      <행정규칙명>현행 복귀 고시</행정규칙명>
+      <행정규칙종류>고시</행정규칙종류>
+      <소관부처명>행정안전부</소관부처명>
+      <발령일자>20240201</발령일자>
+      <현행여부>Y</현행여부>
+      <조문내용>최신 본문</조문내용>
+    </AdmRulService>
+    """.encode("utf-8")
+    details = {"old": old_xml, "latest": latest_xml}
+    monkeypatch.setattr(import_admrules.cache, "list_cached_serials", lambda: ["latest", "old"])
+    monkeypatch.setattr(import_admrules.cache, "get_detail", lambda serial: details[serial])
+
+    counters = import_admrules.import_from_cache(tmp_path)
+
+    path = tmp_path / "행정안전부/_본부/고시/현행 복귀 고시/본문.md"
+    assert counters["written"] == 2
+    assert counters["deleted"] == 0
+    assert path.exists()
+    assert "최신 본문" in path.read_text()
+
+
+def test_import_from_cache_deletes_rule_when_latest_revision_is_non_current(tmp_path, monkeypatch):
+    active_xml = """
+    <AdmRulService>
+      <행정규칙ID>ABC</행정규칙ID>
+      <행정규칙일련번호>111</행정규칙일련번호>
+      <행정규칙명>비현행 전환 고시</행정규칙명>
+      <행정규칙종류>고시</행정규칙종류>
+      <소관부처명>행정안전부</소관부처명>
+      <발령일자>20240101</발령일자>
+      <현행여부>Y</현행여부>
+      <조문내용>현행 본문</조문내용>
+    </AdmRulService>
+    """.encode("utf-8")
+    non_current_xml = """
+    <AdmRulService>
+      <행정규칙ID>ABC</행정규칙ID>
+      <행정규칙일련번호>222</행정규칙일련번호>
+      <행정규칙명>비현행 전환 고시</행정규칙명>
+      <행정규칙종류>고시</행정규칙종류>
+      <소관부처명>행정안전부</소관부처명>
+      <발령일자>20240201</발령일자>
+      <현행여부>N</현행여부>
+      <조문내용>비현행 마지막 본문</조문내용>
+    </AdmRulService>
+    """.encode("utf-8")
+    details = {"active": active_xml, "non_current": non_current_xml}
+    monkeypatch.setattr(import_admrules.cache, "list_cached_serials", lambda: ["non_current", "active"])
+    monkeypatch.setattr(import_admrules.cache, "get_detail", lambda serial: details[serial])
+
+    counters = import_admrules.import_from_cache(tmp_path)
+
+    assert counters["written"] == 2
+    assert counters["deleted"] == 1
+    assert not (tmp_path / "행정안전부/_본부/고시/비현행 전환 고시/본문.md").exists()
+
+
+def test_import_from_cache_commits_non_current_final_state_deletion(tmp_path, monkeypatch):
+    active_xml = """
+    <AdmRulService>
+      <행정규칙ID>ABC</행정규칙ID>
+      <행정규칙일련번호>111</행정규칙일련번호>
+      <행정규칙명>비현행 전환 고시</행정규칙명>
+      <행정규칙종류>고시</행정규칙종류>
+      <소관부처명>행정안전부</소관부처명>
+      <발령일자>20240101</발령일자>
+      <현행여부>Y</현행여부>
+      <조문내용>현행 본문</조문내용>
+    </AdmRulService>
+    """.encode("utf-8")
+    non_current_xml = """
+    <AdmRulService>
+      <행정규칙ID>ABC</행정규칙ID>
+      <행정규칙일련번호>222</행정규칙일련번호>
+      <행정규칙명>비현행 전환 고시</행정규칙명>
+      <행정규칙종류>고시</행정규칙종류>
+      <소관부처명>행정안전부</소관부처명>
+      <발령일자>20240201</발령일자>
+      <현행여부>N</현행여부>
+      <조문내용>비현행 마지막 본문</조문내용>
+    </AdmRulService>
+    """.encode("utf-8")
+    details = {"active": active_xml, "non_current": non_current_xml}
+    commits = []
+    monkeypatch.setattr(import_admrules.cache, "list_cached_serials", lambda: ["non_current", "active"])
+    monkeypatch.setattr(import_admrules.cache, "get_detail", lambda serial: details[serial])
+    monkeypatch.setattr(
+        import_admrules,
+        "commit_admrule",
+        lambda repo, path, msg, date, serial, **kwargs: commits.append(("write", path, msg, serial, kwargs)) or True,
+    )
+    monkeypatch.setattr(
+        import_admrules,
+        "commit_admrule_deletion",
+        lambda repo, path, msg, date, serial, **kwargs: commits.append(("delete", path, msg, serial, kwargs)) or True,
+    )
+
+    counters = import_admrules.import_from_cache(tmp_path, commit=True)
+
+    assert counters["committed"] == 3
+    assert [commit[0] for commit in commits] == ["write", "write", "delete"]
+    delete_commit = commits[-1]
+    assert delete_commit[1] == "행정안전부/_본부/고시/비현행 전환 고시/본문.md"
+    assert "비현행 제외: 비현행 전환 고시" in delete_commit[2]
+    assert delete_commit[4]["dedup_grep_key"] == "비현행 제외 행정규칙일련번호: 222"
+
+
 def test_import_from_cache_commits_stale_path_deletion(tmp_path, monkeypatch):
     old_xml = """
     <AdmRulService>
