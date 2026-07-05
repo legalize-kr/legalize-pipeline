@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.counter import Counter
 from core.quota_budget import ensure_headroom, record_requests
 
-from . import cache, checkpoint
+from . import cache, checkpoint, detail_failure_allowlist
 from .api_client import get_admrule_detail, search_admrules
 from .config import ADMRULE_TYPES, CONCURRENT_WORKERS
 
@@ -40,12 +40,19 @@ def fetch_all_current(
     max_entries: int | None = None,
     date_range: str = "",
 ) -> list[dict]:
-    """Fetch current administrative rule list pages for the selected kinds."""
+    """Fetch administrative-rule history list pages for the selected kinds."""
     entries: list[dict] = []
     for knd in knd_values or list(ADMRULE_TYPES):
         page = 1
         while True:
-            result = search_admrules(page=page, display=100, knd=knd, org=org, date_range=date_range)
+            result = search_admrules(
+                page=page,
+                display=100,
+                knd=knd,
+                org=org,
+                date_range=date_range,
+                history=True,
+            )
             record_requests(1, corpus="admrules")
             entries.extend(entry for entry in result["admrules"] if _within_date_range(entry, "발령일자", date_range))
             total = result["totalCnt"]
@@ -68,7 +75,17 @@ def _fetch_detail_task(serial_no: str, counter: Counter) -> None:
         record_requests(1, corpus="admrules")
         checkpoint.mark_detail_processed(serial_no)
         counter.inc("fetched")
-    except Exception:
+    except Exception as e:
+        entry = detail_failure_allowlist.accepted_entry(serial_no, e)
+        if entry is not None:
+            logger.warning(
+                "Known upstream admrule detail failure ID=%s: %s [%s]",
+                serial_no,
+                e,
+                entry["reason"],
+            )
+            counter.inc("known_failures")
+            return
         logger.exception("Failed admrule detail ID=%s", serial_no)
         counter.inc("errors")
 
@@ -92,8 +109,16 @@ def fetch_details(entries: list[dict], workers: int = CONCURRENT_WORKERS, limit:
     return counter
 
 
+def prune_stale_cache(entries: list[dict]) -> list[str]:
+    serials = {str(entry.get("행정규칙일련번호", "")) for entry in entries if entry.get("행정규칙일련번호")}
+    removed = cache.prune_details(serials)
+    if removed:
+        logger.info("removed stale admrule detail cache files: count=%s", len(removed))
+    return removed
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Fetch and cache admrule detail XML")
+    parser = argparse.ArgumentParser(description="Fetch and cache admrule history detail XML")
     parser.add_argument("--knd", action="append", choices=sorted(ADMRULE_TYPES), help="행정규칙종류 code 1..6. Repeatable.")
     parser.add_argument("--org", default="", help="Optional law.go.kr org code filter")
     parser.add_argument("--limit", type=int, help="Limit detail fetches for testing")
@@ -103,11 +128,22 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if not args.skip_quota_check:
-        ensure_headroom(expected_requests=args.limit or 20000, corpus="admrules")
+        ensure_headroom(expected_requests=args.limit or 60000, corpus="admrules")
     entries = fetch_all_current(knd_values=args.knd, org=args.org, max_entries=args.limit)
+    if args.limit is None and args.knd is None and not args.org:
+        prune_stale_cache(entries)
     counter = fetch_details(entries, workers=args.workers, limit=args.limit)
     cached, fetched, errors = counter.snapshot()
-    logger.info("admrule fetch done: cached=%s fetched=%s errors=%s", cached, fetched, errors)
+    known = counter.snapshot_all().get("known_failures", 0)
+    logger.info(
+        "admrule fetch done: cached=%s fetched=%s known_failures=%s errors=%s",
+        cached,
+        fetched,
+        known,
+        errors,
+    )
+    if known:
+        logger.warning("Known admrule detail failures skipped: known_failures=%s", known)
     _exit_if_errors(errors)
 
 

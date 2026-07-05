@@ -39,6 +39,11 @@ def _require_no_api_error(root: ElementTree.Element, context: str) -> None:
         raise RuntimeError(f"API error ({context}): {result} - {root.findtext('msg', '')}")
 
 
+def _require_admrule_detail_root(root: ElementTree.Element, serial_no: str) -> None:
+    if root.tag != "AdmRulService":
+        raise RuntimeError(f"unexpected admrule detail root tag for ID={serial_no}: {root.tag}")
+
+
 def search_admrules(
     query: str = "",
     page: int = 1,
@@ -113,6 +118,7 @@ def get_admrule_detail(serial_no: str | int) -> bytes:
     })
     raw = resp.content
     root = ElementTree.fromstring(raw)
+    _require_admrule_detail_root(root, serial_no)
     _require_no_api_error(root, f"admrul detail ID={serial_no}")
     cache.put_detail(serial_no, raw)
     return raw

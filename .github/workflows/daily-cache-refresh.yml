@@ -82,7 +82,7 @@ jobs:
           . "$WORKSPACE_ROOT/.venv/bin/activate"
           python -m precedents.fetch_cache
 
-      - name: Fetch administrative rules cache
+      - name: Fetch administrative rules history cache
         working-directory: ${{ env.PIPELINE_REPO }}
         env:
           LAW_OC: ${{ secrets.LAW_OC }}

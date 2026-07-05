@@ -78,7 +78,7 @@ CI에서는 `LEGALIZE-KR-WORKSPACE-ROOT/` 아래에 로컬과 같은 sibling che
     history/{법령명}.json                # 법령 개정 이력 캐시
     precedent/{판례일련번호}.xml
     precedent/precedent_ids.json
-    admrule/{행정규칙일련번호}.xml
+    admrule/{행정규칙일련번호}.xml       # 행정규칙 연혁 상세 XML
     ordinance/{자치법규ID}.xml
     .checkpoint.json                    # 법령 처리 상태
     .failed_msts.json                   # 법령 실패 ledger

@@ -44,6 +44,15 @@ def test_search_admrules_sends_date_range(monkeypatch):
     api_client.search_admrules(date_range="20260501~20260511")
 
 
+def test_search_admrules_history_uses_nw_2(monkeypatch):
+    def fake_request(url, params):
+        assert params["nw"] == "2"
+        return Response(b"<LawSearch><totalCnt>0</totalCnt><page>1</page></LawSearch>")
+
+    monkeypatch.setattr(api_client, "_request", fake_request)
+    api_client.search_admrules(history=True)
+
+
 def test_get_admrule_detail_uses_cache(monkeypatch):
     monkeypatch.setattr(api_client.cache, "get_detail", lambda serial: b"<cached />")
     assert api_client.get_admrule_detail("123") == b"<cached />"
@@ -63,6 +72,21 @@ def test_get_admrule_detail_fetches_and_caches(monkeypatch):
 
     assert api_client.get_admrule_detail("123") == b"<AdmRulService />"
     assert calls == [("123", b"<AdmRulService />")]
+
+
+def test_get_admrule_detail_rejects_html_error_page(monkeypatch):
+    def fake_request(url, params):
+        return Response(b"<html><head><title>Error</title></head></html>")
+
+    monkeypatch.setattr(api_client, "_request", fake_request)
+    monkeypatch.setattr(api_client.cache, "get_detail", lambda serial: None)
+
+    try:
+        api_client.get_admrule_detail("123")
+    except RuntimeError as e:
+        assert "unexpected admrule detail root tag" in str(e)
+    else:
+        raise AssertionError("expected RuntimeError")
 
 
 def test_search_admrules_raises_api_error(monkeypatch):

@@ -157,7 +157,7 @@ LEGALIZE-KR-WORKSPACE-ROOT/
     detail/{MST}.xml              # 법령 상세 API XML
     history/{법령명}.json         # 법령 개정 이력
     precedent/{판례일련번호}.xml  # 판례 상세 API XML
-    admrule/{행정규칙일련번호}.xml
+    admrule/{행정규칙일련번호}.xml  # 행정규칙 연혁 상세 XML
     ordinance/{자치법규ID}.xml
     images/                       # 이미지 캐시
     .checkpoint.json              # 법령 처리 상태

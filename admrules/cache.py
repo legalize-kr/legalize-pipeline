@@ -31,3 +31,15 @@ def list_cached_serials() -> list[str]:
     if not CACHE_DIR.exists():
         return []
     return sorted(p.stem for p in CACHE_DIR.glob("*.xml"))
+
+
+def prune_details(allowed_serials: set[str]) -> list[str]:
+    """Remove cached detail XML files not present in the current full-history search."""
+    allowed = {str(serial) for serial in allowed_serials if serial}
+    removed: list[str] = []
+    for serial in list_cached_serials():
+        if serial in allowed:
+            continue
+        _detail_path(serial).unlink(missing_ok=True)
+        removed.append(serial)
+    return removed

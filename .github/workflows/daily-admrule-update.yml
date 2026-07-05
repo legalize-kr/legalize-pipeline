@@ -65,7 +65,7 @@ jobs:
           git config user.name "legalize-kr-bot"
           git config user.email "bot@legalize.kr"
 
-      - name: Run administrative rules update
+      - name: Run administrative rules history-aware update
         working-directory: ${{ env.PIPELINE_REPO }}
         env:
           LAW_OC: ${{ secrets.LAW_OC }}

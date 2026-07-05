@@ -3,6 +3,7 @@
 import datetime
 import re
 import unicodedata
+from pathlib import Path
 from xml.etree import ElementTree
 
 import yaml
@@ -22,125 +23,40 @@ _WINDOWS_RESERVED_NAMES = {
     *(f"LPT{i}" for i in range(1, 10)),
 }
 
+_ORG_AUTHORITY_PATH = Path(__file__).parent / "data" / "organization_authority.yaml"
+
+
+def _load_org_authority() -> dict:
+    raw = yaml.safe_load(_ORG_AUTHORITY_PATH.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"invalid organization authority: {_ORG_AUTHORITY_PATH}")
+    return raw
+
+
+_ORG_AUTHORITY = _load_org_authority()
+_MISSING_ORG_TOKENS = {str(value).lower() for value in _ORG_AUTHORITY["missing_tokens"]}
 _MINISTRY_RENAME_MAP = {
-    "문화재청": "국가유산청",
-    "문화재청(구)": "국가유산청",
-    "통계청": "국가데이터처",
-    "특허청": "지식재산처",
-    "환경부": "기후에너지환경부",
-    "환경부(구)": "기후에너지환경부",
-    "국립환경인력개발원": "국립환경인재개발원",
-    "산업통상자원부": "산업통상부",
-    "기획재정부": "재정경제부",
-    "행정자치부": "행정안전부",
-    "미래창조과학부": "과학기술정보통신부",
-    "중소기업청": "중소벤처기업부",
-    "국가보훈처": "국가보훈부",
-    "방송통신위원회": "방송미디어통신위원회",
-    "방송통신사무소": "방송미디어통신사무소",
-    "여성가족부": "성평등가족부",
-    "식품의약품안전청": "식품의약품안전처",
-    "평생교육진흥원": "국가평생교육진흥원",
-    "중앙민방위방재교육원": "국가재난안전교육원",
-    "국가민방위재난안전교육원": "국가재난안전교육원",
+    str(key): str(value) for key, value in _ORG_AUTHORITY["aliases"].items()
 }
-
 _HISTORICAL_ROOT_MINISTRY_SUCCESSORS = {
-    "문교부": frozenset({"교육부"}),
-    "교육인적자원부": frozenset({"교육부"}),
-    "교육과학기술부": frozenset({"교육부", "과학기술정보통신부"}),
-    "노동부": frozenset({"고용노동부"}),
-    "외교통상부": frozenset({"외교부"}),
-    "국토해양부": frozenset({"국토교통부", "해양수산부", "기후에너지환경부"}),
-    "지식경제부": frozenset({"산업통상부"}),
-    "정보통신부": frozenset({"과학기술정보통신부"}),
-    "문화관광부": frozenset({"문화체육관광부"}),
-    "안전행정부": frozenset({"행정안전부"}),
-    "보건복지가족부": frozenset({"보건복지부"}),
-    "농림부": frozenset({"농림축산식품부"}),
-    "농림수산부": frozenset({"농림축산식품부", "해양수산부"}),
-    "농림수산식품부": frozenset({"농림축산식품부", "해양수산부"}),
+    str(key): frozenset(str(item) for item in value)
+    for key, value in _ORG_AUTHORITY["historical_root_successors"].items()
 }
-
 _LEGAL_PARENT_MAP = {
-    "국가정보원": "대통령",
-    "국무조정실": "국무총리",
-    "국무총리비서실": "국무총리",
-    "기획예산처": "국무총리",
-    "인사혁신처": "국무총리",
-    "법제처": "국무총리",
-    "식품의약품안전처": "국무총리",
-    "국가데이터처": "국무총리",
-    "지식재산처": "국무총리",
-    "공정거래위원회": "국무총리",
-    "국민권익위원회": "국무총리",
-    "금융위원회": "국무총리",
-    "개인정보보호위원회": "국무총리",
-    "원자력안전위원회": "국무총리",
-    "국세청": "재정경제부",
-    "관세청": "재정경제부",
-    "조달청": "재정경제부",
-    "재외동포청": "외교부",
-    "병무청": "국방부",
-    "방위사업청": "국방부",
-    "경찰청": "행정안전부",
-    "소방청": "행정안전부",
-    "국가유산청": "문화체육관광부",
-    "농촌진흥청": "농림축산식품부",
-    "산림청": "농림축산식품부",
-    "질병관리청": "보건복지부",
-    "기상청": "기후에너지환경부",
-    "해양경찰청": "해양수산부",
-    "방송미디어통신위원회": "대통령",
-    "방송미디어통신사무소": "방송미디어통신위원회",
-    "국립전파연구원": "과학기술정보통신부",
-    "중앙전파관리소": "과학기술정보통신부",
-    "전파시험인증센터": "국립전파연구원",
-    "위성전파감시센터": "중앙전파관리소",
-    "전파관리소": "중앙전파관리소",
-    "국가교육위원회": "대통령",
-    "우주항공청": "과학기술정보통신부",
-    "행정중심복합도시건설청": "국토교통부",
-    "새만금개발청": "국토교통부",
-    "대검찰청": "법무부",
-    "국립농산물품질관리원": "농림축산식품부",
-    "민주평화통일자문회의사무처": "대통령",
-    "수도권매립지관리공사": "기후에너지환경부",
-    "국가평생교육진흥원": "교육부",
-    "국가재난안전교육원": "행정안전부",
-    "국립재난안전연구원": "행정안전부",
+    str(key): str(value) for key, value in _ORG_AUTHORITY["parents"].items()
 }
-
-_ROOT_LEVEL_AGENCIES = {
-    "대통령",
-    "국무총리",
-    "교육부",
-    "외교부",
-    "통일부",
-    "법무부",
-    "국방부",
-    "행정안전부",
-    "문화체육관광부",
-    "농림축산식품부",
-    "산업통상부",
-    "보건복지부",
-    "기후에너지환경부",
-    "고용노동부",
-    "성평등가족부",
-    "국토교통부",
-    "해양수산부",
-    "중소벤처기업부",
-    "재정경제부",
-    "과학기술정보통신부",
-    "국가보훈부",
-    "국가인권위원회",
-    "중앙선거관리위원회",
-    "고위공직자범죄수사처",
-    "진실화해를위한과거사정리위원회",
-    "세월호 선체조사위원회",
-    "친일반민족행위자재산조사위원회",
-    "10·29이태원참사진상규명과재발방지를위한특별조사위원회",
-} | set(_LEGAL_PARENT_MAP)
+_ROOT_LEVEL_AGENCIES = set(str(value) for value in _ORG_AUTHORITY["roots"]) | set(_LEGAL_PARENT_MAP)
+_RULE_TYPE_ROOT_MAP = {
+    str(key): str(value) for key, value in _ORG_AUTHORITY["rule_type_roots"].items()
+}
+_DEPARTMENT_ROOT_OVERRIDES = {
+    (str(item["top"]), str(item["department_agency"]))
+    for item in _ORG_AUTHORITY["department_root_overrides"]
+}
+_STALE_DEPARTMENT_ROOTS = {
+    (str(item["top"]), str(item["agency"]), str(item["department_agency"]))
+    for item in _ORG_AUTHORITY["stale_department_roots"]
+}
 
 
 class _QuotedStr(str):
@@ -171,6 +87,10 @@ def _quote_yaml_strings(value):
 
 def normalize_nfc(text: str) -> str:
     return unicodedata.normalize("NFC", text or "")
+
+
+def _is_missing_org_token(text: str) -> bool:
+    return not text or text.lower() in _MISSING_ORG_TOKENS
 
 
 def format_date(date_str: str) -> str:
@@ -255,13 +175,22 @@ def safe_path_part(text: str, *, suffix_on_truncate: str = "") -> str:
     return normalized
 
 
-def normalize_ministry_name(text: str, fallback: str = "") -> str:
-    """Normalize observed ministry-name spelling drift for path stability."""
+def _normalize_ministry_text(text: str, fallback: str = "") -> str:
     normalized = normalize_nfc(text).strip()
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized):
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized) or _is_missing_org_token(normalized):
         normalized = normalize_nfc(fallback).strip()
     normalized = normalized.replace("10.29이태원", "10·29이태원")
     normalized = re.sub(r"\s+", " ", normalized)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized) or _is_missing_org_token(normalized):
+        return ""
+    return normalized
+
+
+def normalize_ministry_name(text: str, fallback: str = "") -> str:
+    """Normalize observed ministry-name spelling drift for path stability."""
+    normalized = _normalize_ministry_text(text, fallback)
+    if not normalized:
+        return ""
     return _MINISTRY_RENAME_MAP.get(normalized, normalized)
 
 
@@ -288,18 +217,24 @@ def resolve_ministry_names(
     ministry: str,
     parent: str = "",
     department_org: str = "",
+    rule_type: str = "",
 ) -> tuple[str, str]:
     """Return ``(top-level ministry, issuing agency)`` for path/frontmatter use."""
+    original_agency = _normalize_ministry_text(ministry, parent)
     agency = normalize_ministry_name(ministry, parent)
     normalized_parent = normalize_ministry_name(parent)
     department_agency, department_unit = _split_department_org_name(department_org)
-    top = normalized_parent if parent else agency
+    root_from_rule_type = _RULE_TYPE_ROOT_MAP.get(normalize_ministry_name(rule_type) or rule_type)
+    top = normalized_parent or agency
 
     if _should_use_current_department_root_for_stale_ministry(
         top, agency, department_agency
-    ) or _should_collapse_historical_root_ministry(
-        top, agency
     ):
+        agency = top
+    elif agency == top and _should_use_department_root(top, department_agency):
+        top = department_agency
+        agency = department_agency
+    elif _should_collapse_historical_root_ministry(top, original_agency or agency):
         agency = top
     elif parent_chain := _split_parent_agency_chain(normalized_parent, department_agency):
         top, chain_agency = parent_chain
@@ -309,14 +244,11 @@ def resolve_ministry_names(
         top = agency
     elif agency == department_unit and department_agency:
         agency = department_agency
-    elif agency == top and _should_use_department_root(top, department_agency):
-        top = department_agency
-        agency = department_agency
 
     if not top:
-        top = agency
+        top = agency or root_from_rule_type or ""
     if not agency:
-        agency = top
+        agency = top or root_from_rule_type or ""
     return top, agency
 
 
@@ -327,33 +259,13 @@ def _should_collapse_historical_root_ministry(top: str, agency: str) -> bool:
 def _should_use_current_department_root_for_stale_ministry(
     top: str, agency: str, department_agency: str
 ) -> bool:
-    return (
-        top,
-        agency,
-        department_agency,
-    ) in {
-        (
-            "과학기술정보통신부",
-            "방송미디어통신위원회",
-            "과학기술정보통신부",
-        ),
-        (
-            "기후에너지환경부",
-            "국토교통부",
-            "기후에너지환경부",
-        ),
-    }
+    return (top, agency, department_agency) in _STALE_DEPARTMENT_ROOTS
 
 
 def _should_use_department_root(top: str, department_agency: str) -> bool:
     if not department_agency or department_agency not in _ROOT_LEVEL_AGENCIES:
         return False
-    return top not in _ROOT_LEVEL_AGENCIES or (
-        top,
-        department_agency,
-    ) in {
-        ("산업통상부", "기후에너지환경부"),
-    }
+    return top not in _ROOT_LEVEL_AGENCIES or (top, department_agency) in _DEPARTMENT_ROOT_OVERRIDES
 
 
 def _build_legal_org_path(agency: str) -> list[str]:
@@ -389,6 +301,16 @@ def resolve_org_path(top: str, agency: str) -> list[str]:
 _assigned_paths: dict[str, str] = {}
 
 
+def admrule_identity(metadata: dict) -> str:
+    """Return the revision identity used for path continuity."""
+    return str(metadata.get("행정규칙ID") or metadata.get("행정규칙일련번호") or "").strip()
+
+
+def is_repeal_revision(metadata: dict) -> bool:
+    """Return whether this revision repeals the administrative rule."""
+    return "폐지" in str(metadata.get("제개정구분", ""))
+
+
 def reset_path_registry() -> None:
     _assigned_paths.clear()
 
@@ -399,21 +321,23 @@ def get_admrule_path(metadata: dict) -> str:
         metadata.get("소관부처명", ""),
         metadata.get("상위기관명") or metadata.get("상위부처명", ""),
         metadata.get("담당부서기관명", ""),
+        metadata.get("행정규칙종류", ""),
     )
     org_path = metadata.get("기관경로") or resolve_org_path(top, agency)
     org_parts = [safe_path_part(part) for part in org_path]
     if not org_parts:
-        org_parts = [safe_path_part(top or agency)]
+        org_parts = [safe_path_part(top or agency or "_미분류")]
     if len(org_parts) == 1 and agency == top:
         org_parts.append("_본부")
     serial = str(metadata.get("행정규칙일련번호", ""))
+    identity = admrule_identity(metadata) or serial
     rule_type = safe_path_part(metadata.get("행정규칙종류", ""))
     name = safe_path_part(metadata.get("행정규칙명", ""), suffix_on_truncate=serial)
     org_prefix = "/".join(org_parts)
     base = f"{org_prefix}/{rule_type}/{name}/본문.md"
     existing = _assigned_paths.get(base)
-    if existing is None or existing == serial:
-        _assigned_paths[base] = serial
+    if existing is None or existing == identity:
+        _assigned_paths[base] = identity
         return base
 
     issue_no = str(metadata.get("발령번호", ""))
@@ -425,16 +349,16 @@ def get_admrule_path(metadata: dict) -> str:
     ):
         path = f"{org_prefix}/{rule_type}/{name}_{suffix}/본문.md"
         existing = _assigned_paths.get(path)
-        if existing is None or existing == serial:
-            _assigned_paths[path] = serial
+        if existing is None or existing == identity:
+            _assigned_paths[path] = identity
             return path
 
     idx = 2
     while True:
         path = f"{org_prefix}/{rule_type}/{name}_{safe_path_part(serial)}_{idx}/본문.md"
         existing = _assigned_paths.get(path)
-        if existing is None or existing == serial:
-            _assigned_paths[path] = serial
+        if existing is None or existing == identity:
+            _assigned_paths[path] = identity
             return path
         idx += 1
 
@@ -467,10 +391,15 @@ def _metadata_from_xml(root: ElementTree.Element) -> dict:
         raw_ministry,
         raw_parent,
         raw_department_org,
+        rule_type,
     )
     org_path = resolve_org_path(raw_top_ministry, raw_resolved_ministry)
     top_ministry = org_path[0] if org_path else raw_top_ministry
     ministry = org_path[-1] if org_path else raw_resolved_ministry
+    if not top_ministry and not ministry:
+        top_ministry = "_미분류"
+        ministry = "_미분류"
+        org_path = ["_미분류"]
     metadata = {
         "행정규칙ID": _find_first(root, ("행정규칙ID",)),
         "행정규칙일련번호": _find_first(root, ("행정규칙일련번호", "admrulSeq", "ID")),
@@ -487,7 +416,7 @@ def _metadata_from_xml(root: ElementTree.Element) -> dict:
         "제개정구분코드": _find_first(root, ("제개정구분코드",)),
         "현행연혁구분": _find_first(root, ("현행연혁구분",)),
     }
-    if raw_ministry and raw_ministry != ministry:
+    if raw_ministry and not _is_missing_org_token(raw_ministry.strip()) and raw_ministry != ministry:
         metadata["소관부처명_원문"] = raw_ministry
     return metadata
 

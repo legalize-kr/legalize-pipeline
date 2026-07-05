@@ -117,6 +117,11 @@ def test_normalize_ministry_name_uses_parent_for_date_value():
     assert normalize_ministry_name("2025-10-01", "기후에너지환경부") == "기후에너지환경부"
 
 
+def test_normalize_ministry_name_treats_literal_null_as_missing():
+    assert normalize_ministry_name("null") == ""
+    assert normalize_ministry_name("null", "행정안전부") == "행정안전부"
+
+
 def test_normalize_ministry_name_unifies_itaewon_middle_dot():
     assert (
         normalize_ministry_name("10.29이태원참사진상규명과재발방지를위한특별조사위원회")
@@ -405,6 +410,96 @@ def test_get_admrule_path_maps_government_affiliated_public_bodies():
     assert education_path == "교육부/국가평생교육진흥원/고시/학점인정 기준/본문.md"
 
 
+def test_get_admrule_path_infers_root_for_presidential_and_prime_minister_orders():
+    reset_path_registry()
+    presidential_path = get_admrule_path({
+        "상위부처명": "null",
+        "소관부처명": "",
+        "행정규칙종류": "대통령훈령",
+        "행정규칙명": "정부조직법 개정에 따른 국정관리시스템 운영 규정 등 일부개정령",
+        "행정규칙일련번호": "2200000024283",
+    })
+    assert presidential_path.startswith("대통령/_본부/대통령훈령/")
+
+    prime_minister_path = get_admrule_path({
+        "상위부처명": "null",
+        "소관부처명": "",
+        "행정규칙종류": "국무총리훈령",
+        "행정규칙명": "새만금사업 실무정책 협의회 규정",
+        "행정규칙일련번호": "2200000000001",
+    })
+    assert prime_minister_path.startswith("국무총리/_본부/국무총리훈령/")
+
+
+def test_get_admrule_path_uses_parent_map_when_parent_is_literal_null():
+    reset_path_registry()
+    path = get_admrule_path({
+        "상위부처명": "null",
+        "소관부처명": "국립환경과학원",
+        "담당부서기관명": "국립환경과학원",
+        "행정규칙종류": "고시",
+        "행정규칙명": "환경정화용 유전자변형생물체의 환경위해성 평가기관지정",
+        "행정규칙일련번호": "2000000060472",
+    })
+    assert path.startswith("기후에너지환경부/국립환경과학원/고시/")
+
+
+def test_get_admrule_path_maps_remaining_null_roots_to_current_parent():
+    reset_path_registry()
+    assert get_admrule_path({
+        "상위부처명": "null",
+        "소관부처명": "결제정책팀",
+        "담당부서기관명": "결제정책팀",
+        "행정규칙종류": "고시",
+        "행정규칙명": "결제완결성 보장 대상 지급결제제도 지정에 관한 규정",
+        "행정규칙일련번호": "2000000053188",
+    }).startswith("국무총리/금융위원회/고시/")
+    assert get_admrule_path({
+        "상위부처명": "null",
+        "소관부처명": "납북피해자보상및지원심의위원회",
+        "담당부서기관명": "납북피해자보상및지원심의위원회",
+        "행정규칙종류": "공고",
+        "행정규칙명": "납북피해위로금등의지급절차",
+        "행정규칙일련번호": "2000000060338",
+    }).startswith("통일부/납북피해자보상및지원심의위원회/공고/")
+    assert get_admrule_path({
+        "상위부처명": "null",
+        "소관부처명": "삼청교육피해자명예회복및보상심의위원회",
+        "담당부서기관명": "삼청교육피해자명예회복및보상심의위원회",
+        "행정규칙종류": "공고",
+        "행정규칙명": "삼청교육피해자보상또는명예회복에대한결정",
+        "행정규칙일련번호": "2000000060373",
+    }).startswith("국무총리/삼청교육피해자명예회복및보상심의위원회/공고/")
+    assert get_admrule_path({
+        "상위부처명": "국가균형발전위원회",
+        "소관부처명": "국가균형발전위원회",
+        "담당부서기관명": "국가균형발전위원회(운영지원과)",
+        "행정규칙종류": "훈령",
+        "행정규칙명": "국가균형발전위원회 운영세칙",
+        "행정규칙일련번호": "2100000189657",
+    }).startswith("대통령/지방시대위원회/훈령/")
+
+
+def test_get_admrule_path_maps_legacy_roots_to_current_successors():
+    reset_path_registry()
+    assert get_admrule_path({
+        "상위부처명": "건설교통부",
+        "소관부처명": "건설교통부",
+        "행정규칙종류": "고시",
+        "행정규칙명": "건설교통 고시",
+        "행정규칙일련번호": "1",
+    }).startswith("국토교통부/_본부/")
+
+    assert get_admrule_path({
+        "상위부처명": "국토해양부",
+        "소관부처명": "국토해양부",
+        "담당부서기관명": "해양수산부(해양영토과)",
+        "행정규칙종류": "고시",
+        "행정규칙명": "해양 고시",
+        "행정규칙일련번호": "2",
+    }).startswith("해양수산부/_본부/")
+
+
 def test_xml_to_markdown_preserves_raw_ministry_when_mapped():
     xml = """
     <AdmRulService>
@@ -423,6 +518,25 @@ def test_xml_to_markdown_preserves_raw_ministry_when_mapped():
     assert "- '문화체육관광부'" in md
     assert "- '국가유산청'" in md
     assert "소관부처명_원문: '문화재청'" in md
+
+
+def test_xml_to_markdown_does_not_preserve_literal_null_as_original_ministry():
+    xml = """
+    <AdmRulService>
+      <행정규칙ID>ABC</행정규칙ID>
+      <행정규칙일련번호>123</행정규칙일련번호>
+      <행정규칙명>대통령 훈령</행정규칙명>
+      <행정규칙종류>대통령훈령</행정규칙종류>
+      <소관부처명>null</소관부처명>
+      <상위부처명>null</상위부처명>
+      <발령일자>20240504</발령일자>
+      <조문내용>제1조 목적</조문내용>
+    </AdmRulService>
+    """
+    md = xml_to_markdown(xml)
+    assert "상위기관명: '대통령'" in md
+    assert "소관부처명: '대통령'" in md
+    assert "소관부처명_원문" not in md
 
 
 def test_build_frontmatter_clamps_pre_1970_issue_date():
