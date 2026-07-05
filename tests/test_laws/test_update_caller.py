@@ -375,3 +375,94 @@ def test_update_backfills_older_history_discovered_from_current_law(tmp_path, mo
     update_mod.update(days=14, dry_run=True)
 
     assert detail_calls == ["244531", "286195"]
+
+
+def test_update_backfills_valid_cache_missing_msts_outside_search_window(
+    tmp_path,
+    monkeypatch,
+):
+    import laws.update as update_mod
+    import laws.converter as conv
+    import laws.cache as law_cache
+    from laws.audit_history_vs_git import MissingHistoryMst
+
+    kr_dir = tmp_path / "kr"
+    kr_dir.mkdir()
+    monkeypatch.setattr(update_mod, "KR_DIR", kr_dir)
+    monkeypatch.setattr(update_mod, "LAW_API_KEY", "test-key")
+    monkeypatch.setattr(conv, "KR_DIR", kr_dir, raising=False)
+    monkeypatch.setattr(law_cache, "CACHE_DIR", tmp_path / ".cache")
+
+    monkeypatch.setattr(update_mod, "search_laws", lambda **kw: {
+        "laws": [],
+        "totalCnt": 0,
+    })
+    monkeypatch.setattr(update_mod, "get_law_history", lambda name, refresh=False: [])
+
+    missing = [
+        MissingHistoryMst(
+            mst="259479",
+            law_name="인천광역시 제물포구ㆍ영종구 및 검단구 설치 등에 관한 법률",
+            amendment="제정",
+            law_type="법률",
+            promulgation_date="20240130",
+            promulgation_number="20161",
+            history_file="인천광역시 제물포구ㆍ영종구 및 검단구 설치 등에 관한 법률.json",
+            detail_status="valid_detail",
+        ),
+        MissingHistoryMst(
+            mst="281877",
+            law_name="인천광역시 제물포구ㆍ영종구 및 검단구 설치 등에 관한 법률",
+            amendment="일부개정",
+            law_type="법률",
+            promulgation_date="20251230",
+            promulgation_number="21247",
+            history_file="인천광역시 제물포구ㆍ영종구 및 검단구 설치 등에 관한 법률.json",
+            detail_status="valid_detail",
+        ),
+    ]
+
+    class AuditStub:
+        missing_in_git_with_valid_detail = missing
+
+    audit_calls = []
+
+    def audit_stub(**kwargs):
+        audit_calls.append(kwargs)
+        return AuditStub()
+
+    detail_calls = []
+
+    def detail_stub(mst):
+        detail_calls.append(mst)
+        return {
+            "metadata": {
+                "법령명한글": "인천광역시 제물포구ㆍ영종구 및 검단구 설치 등에 관한 법률",
+                "법령MST": mst,
+                "법령ID": "014604",
+                "법령구분": "법률",
+                "공포일자": "20240130" if mst == "259479" else "20251230",
+                "공포번호": "20161" if mst == "259479" else "21247",
+            },
+            "articles": [{"조문번호": "1"}],
+        }
+
+    monkeypatch.setattr(update_mod, "audit_history_vs_git", audit_stub)
+    monkeypatch.setattr(update_mod, "get_law_detail", detail_stub)
+    monkeypatch.setattr(update_mod, "law_to_markdown", lambda detail: "# 법\n\n본문")
+    monkeypatch.setattr(update_mod, "reset_path_registry", lambda: None)
+    monkeypatch.setattr(update_mod, "get_last_update", lambda: "2026-06-01")
+    monkeypatch.setattr(update_mod, "get_processed_msts", lambda: set())
+    monkeypatch.setattr(update_mod, "mark_processed", lambda mst: None)
+    monkeypatch.setattr(update_mod, "set_last_update", lambda d: None)
+    monkeypatch.setattr(update_mod, "commit_law", lambda *args, **kwargs: False)
+
+    update_mod.update(
+        days=14,
+        dry_run=True,
+        backfill_missing_from_cache=True,
+        cache_backfill_recent_days=730,
+    )
+
+    assert audit_calls == [{"recent_days": 730}]
+    assert detail_calls == ["259479", "281877"]

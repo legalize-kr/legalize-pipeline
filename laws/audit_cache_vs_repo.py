@@ -260,14 +260,16 @@ def audit(cache_dir: Path | None = None, repo_dir: Path | None = None) -> AuditR
 
     final_by_path: dict[str, CacheEntry] = {}
     latest_by_id: dict[str, tuple[str, dict[str, str]]] = {}
+    lineage_order: list[str] = []
     for mst, meta in entries:
-        latest_by_id[meta["법령ID"]] = (mst, meta)
+        law_id = meta["법령ID"]
+        if law_id not in latest_by_id:
+            lineage_order.append(law_id)
+        latest_by_id[law_id] = (mst, meta)
 
     assigned_paths: dict[str, str] = {}
-    for mst, meta in entries:
-        latest = latest_by_id.get(meta["법령ID"])
-        if latest != (mst, meta):
-            continue
+    for law_id in lineage_order:
+        mst, meta = latest_by_id[law_id]
         rel = _current_name_path(meta["법령명한글"], meta["법령구분"], meta["법령ID"], assigned_paths)
         final_by_path[rel] = CacheEntry(
             expected_path=rel,

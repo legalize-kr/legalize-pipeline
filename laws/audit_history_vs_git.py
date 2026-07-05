@@ -68,6 +68,7 @@ class MissingHistoryMst:
     amendment: str
     law_type: str
     promulgation_date: str
+    promulgation_number: str
     history_file: str
     detail_status: str
 
@@ -375,6 +376,8 @@ def _missing_record(
         law_type=history.law_type or (detail.law_type if detail else ""),
         promulgation_date=history.promulgation_date
         or (detail.promulgation_date if detail else ""),
+        promulgation_number=history.promulgation_number
+        or (detail.promulgation_number if detail else ""),
         history_file=history.history_file,
         detail_status=detail_status,
     )
@@ -461,12 +464,18 @@ def _report_to_jsonable(report: AuditReport) -> dict[str, Any]:
 def failure_reasons(
     report: AuditReport,
     *,
+    fail_on_any_valid_missing: bool = False,
     fail_on_long_term_missing: bool = False,
     fail_on_commit_metadata_mismatch: bool = False,
 ) -> list[str]:
     """Return audit failure reasons for CLI/CI gates."""
 
     reasons: list[str] = []
+    if fail_on_any_valid_missing and report.missing_in_git_with_valid_detail:
+        reasons.append(
+            "missing_in_git_with_valid_detail="
+            f"{len(report.missing_in_git_with_valid_detail)}"
+        )
     if fail_on_long_term_missing and report.long_term_missing:
         reasons.append(f"long_term_missing={len(report.long_term_missing)}")
     if fail_on_commit_metadata_mismatch and report.commit_metadata_mismatches:
@@ -503,6 +512,11 @@ def main() -> None:
         help="Exit non-zero when history has old valid-detail MSTs absent from Git",
     )
     parser.add_argument(
+        "--fail-on-any-valid-missing",
+        action="store_true",
+        help="Exit non-zero when any valid-detail history MST is absent from Git",
+    )
+    parser.add_argument(
         "--fail-on-commit-metadata-mismatch",
         action="store_true",
         help="Exit non-zero when matching Git commits disagree with history metadata",
@@ -519,6 +533,7 @@ def main() -> None:
     )
     reasons = failure_reasons(
         report,
+        fail_on_any_valid_missing=args.fail_on_any_valid_missing,
         fail_on_long_term_missing=args.fail_on_long_term_missing,
         fail_on_commit_metadata_mismatch=args.fail_on_commit_metadata_mismatch,
     )

@@ -28,3 +28,28 @@ def test_validate_frontmatter_allows_attachment_values_with_dashes(tmp_path: Pat
     )
 
     assert validate_markdown_file(target, repo_root=tmp_path) == []
+
+
+def test_validate_frontmatter_uses_unknown_jurisdiction_split(tmp_path: Path):
+    rel = Path("_미상/(구)전라남도교육청/규칙/전남광주통합특별시교육청 행정심판위원회 규칙/본문.md")
+    target = tmp_path / rel
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        """---
+자치법규ID: '3397921'
+자치법규명: '전남광주통합특별시교육청 행정심판위원회 규칙'
+자치법규종류: '규칙'
+지자체기관명: '(구)전라남도교육청'
+지자체구분:
+  광역: '_미상'
+  기초: '(구)전라남도교육청'
+본문출처: 'api-text'
+첨부파일: []
+---
+
+# 전남광주통합특별시교육청 행정심판위원회 규칙
+""",
+        encoding="utf-8",
+    )
+
+    assert validate_markdown_file(target, repo_root=tmp_path) == []

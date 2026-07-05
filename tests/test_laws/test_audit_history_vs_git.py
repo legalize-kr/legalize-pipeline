@@ -179,8 +179,12 @@ def test_audit_history_vs_git_classifies_recent_and_long_term_missing(tmp_path: 
     assert report.commit_metadata_mismatches == []
     assert [record.mst for record in report.recent_cache_ahead] == ["300"]
     assert [record.mst for record in report.long_term_missing] == ["200"]
+    assert report.missing_in_git_with_valid_detail[0].promulgation_number == "200"
     assert failure_reasons(report, fail_on_long_term_missing=True) == [
         "long_term_missing=1"
+    ]
+    assert failure_reasons(report, fail_on_any_valid_missing=True) == [
+        "missing_in_git_with_valid_detail=2"
     ]
 
 

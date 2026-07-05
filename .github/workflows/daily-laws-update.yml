@@ -66,7 +66,7 @@ jobs:
           LAW_OC: ${{ secrets.LAW_OC }}
         run: |
           . "$WORKSPACE_ROOT/.venv/bin/activate"
-          python -m laws.update --days 14
+          python -m laws.update --days 14 --backfill-missing-from-cache
 
       - name: Validate
         working-directory: ${{ env.PIPELINE_REPO }}
@@ -84,7 +84,7 @@ jobs:
         working-directory: ${{ env.PIPELINE_REPO }}
         run: |
           . "$WORKSPACE_ROOT/.venv/bin/activate"
-          python -m laws.audit_history_vs_git --fail-on-long-term-missing --recent-days 365
+          python -m laws.audit_history_vs_git --fail-on-any-valid-missing --recent-days 365
 
       - name: Report import failures
         working-directory: ${{ env.PIPELINE_REPO }}

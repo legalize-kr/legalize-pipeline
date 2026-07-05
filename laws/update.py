@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 import yaml
 
 from .api_client import get_law_detail, get_law_history, search_laws
+from .audit_history_vs_git import DEFAULT_RECENT_DAYS, audit as audit_history_vs_git
 from .checkpoint import get_last_update, get_processed_msts, mark_processed, set_last_update
 from .config import KR_DIR, LAW_API_KEY
 from .converter import (
@@ -162,6 +163,33 @@ def _commit_exists_for_mst(mst: str) -> bool:
     return commit_exists(KR_DIR.parent, f"법령MST: {mst}")
 
 
+def _append_missing_cache_history_msts(
+    all_laws: list[dict],
+    seen_msts: set[str],
+    *,
+    recent_days: int = DEFAULT_RECENT_DAYS,
+) -> int:
+    """Append valid-detail history MSTs that are cached but absent from Git."""
+
+    report = audit_history_vs_git(recent_days=recent_days)
+    added = 0
+    for record in report.missing_in_git_with_valid_detail:
+        if not record.mst or record.mst in seen_msts:
+            continue
+        all_laws.append({
+            "법령일련번호": record.mst,
+            "법령명한글": record.law_name,
+            "제개정구분명": record.amendment,
+            "법령구분": record.law_type,
+            "공포일자": record.promulgation_date,
+            "공포번호": record.promulgation_number,
+            "시행일자": "",
+        })
+        seen_msts.add(record.mst)
+        added += 1
+    return added
+
+
 def update(
     days: int = 14,
     law_type_filter: str | None = None,
@@ -169,6 +197,8 @@ def update(
     max_pages: int = 50,
     augment_history: bool = True,
     backfill_discovered_history: bool = True,
+    backfill_missing_from_cache: bool = False,
+    cache_backfill_recent_days: int = DEFAULT_RECENT_DAYS,
 ) -> int:
     """Query API for recently amended laws and import their latest versions."""
     if not LAW_API_KEY:
@@ -252,6 +282,17 @@ def update(
             f"lsHistory augmentation: +{added} window MSTs, +{backfilled} backfill MSTs "
             f"from {len(unique_names)} laws "
             f"(errors={history_errors})"
+        )
+
+    if backfill_missing_from_cache:
+        seen_msts = {law.get("법령일련번호", "") for law in all_laws}
+        backfilled = _append_missing_cache_history_msts(
+            all_laws,
+            seen_msts,
+            recent_days=cache_backfill_recent_days,
+        )
+        logger.info(
+            f"cache history backfill: +{backfilled} valid-detail MSTs absent from Git"
         )
 
     # Checkpoints are only a cursor for the search window. Commit existence
@@ -385,6 +426,23 @@ def main():
             "for laws in the update window. Default on to prevent historical gaps."
         ),
     )
+    parser.add_argument(
+        "--backfill-missing-from-cache",
+        action="store_true",
+        help=(
+            "Audit cached history against Git and import every missing MST that "
+            "already has valid detail XML, even if lawSearch does not surface it."
+        ),
+    )
+    parser.add_argument(
+        "--cache-backfill-recent-days",
+        type=int,
+        default=DEFAULT_RECENT_DAYS,
+        help=(
+            "Recent-days window used only for cache-backfill audit reporting "
+            f"(default: {DEFAULT_RECENT_DAYS})."
+        ),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -396,6 +454,8 @@ def main():
         max_pages=args.max_pages,
         augment_history=not args.no_augment_history,
         backfill_discovered_history=not args.no_backfill_discovered_history,
+        backfill_missing_from_cache=args.backfill_missing_from_cache,
+        cache_backfill_recent_days=args.cache_backfill_recent_days,
     )
 
     if not args.dry_run:

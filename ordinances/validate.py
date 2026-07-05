@@ -7,8 +7,10 @@ from pathlib import Path
 import yaml
 
 from .config import STORAGE_TYPES
-from .converter import compute_path
+from .converter import safe_path_part
 from .jurisdictions import GWANGYEOK
+
+UNKNOWN_GWANGYEOK = "_미상"
 
 
 def validate_markdown_file(path: Path, *, repo_root: Path) -> list[str]:
@@ -34,21 +36,23 @@ def validate_markdown_file(path: Path, *, repo_root: Path) -> list[str]:
     if ordinance_type not in STORAGE_TYPES:
         errors.append(f"invalid 자치법규종류: {rel}")
     split = fm.get("지자체구분") or fm.get("jurisdiction_split") or {}
-    if split.get("광역") not in GWANGYEOK or not split.get("기초"):
+    gwangyeok = split.get("광역")
+    gicho = split.get("기초")
+    if (gwangyeok not in GWANGYEOK and gwangyeok != UNKNOWN_GWANGYEOK) or not gicho:
         errors.append(f"invalid 지자체구분: {rel}")
     body_source = fm.get("본문출처", fm.get("body_source"))
     if body_source not in {"api-text", "parsed-from-hwp", "parsing-failed"}:
         errors.append(f"invalid 본문출처: {rel}")
-    expected = compute_path(
-        {
-            "자치법규종류": ordinance_type or "",
-            "지자체기관명": fm.get("지자체기관명", fm.get("jurisdiction", "")),
-            "자치법규명": fm.get("자치법규명", ""),
-            "공포번호": fm.get("공포번호", ""),
-            "자치법규ID": fm.get("자치법규ID", ""),
-        }
+    ordinance_id = safe_path_part(str(fm.get("자치법규ID", "")))
+    name = safe_path_part(fm.get("자치법규명", ""), suffix_on_truncate=ordinance_id)
+    expected = Path(
+        safe_path_part(str(gwangyeok or "")),
+        safe_path_part(str(gicho or "")),
+        str(ordinance_type or ""),
+        name,
+        "본문.md",
     )
-    if str(rel) != expected and not _is_collision_path(rel, Path(expected), fm):
+    if rel != expected and not _is_collision_path(rel, expected, fm):
         errors.append(f"path mismatch: {rel} != {expected}")
     for idx, attachment in enumerate(fm.get("첨부파일") or fm.get("attachments") or []):
         if not isinstance(attachment, dict):
