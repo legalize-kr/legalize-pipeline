@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import requests
 import responses as responses_lib
 
 import laws.cache as law_cache
@@ -89,6 +90,20 @@ def test_get_law_detail_api_error():
     responses_lib.add(responses_lib.GET, f"{LAW_API_BASE}/lawService.do", body=xml, status=200)
     with pytest.raises(RuntimeError, match="실패"):
         api_client.get_law_detail("000000")
+
+
+@responses_lib.activate
+def test_get_law_detail_can_disable_http_retries():
+    responses_lib.add(
+        responses_lib.GET,
+        f"{LAW_API_BASE}/lawService.do",
+        status=500,
+    )
+
+    with pytest.raises(requests.HTTPError, match="500 Server Error"):
+        api_client.get_law_detail("37612", max_retries=0)
+
+    assert len(responses_lib.calls) == 1
 
 
 @responses_lib.activate

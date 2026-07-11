@@ -45,6 +45,16 @@ def test_is_accepted_requires_unexpired_matching_error(tmp_path: Path, monkeypat
     assert not allowlist.is_accepted("123", "mismatched tag: line 1", today=date(2100, 1, 1))
 
 
+def test_active_entry_requires_only_unexpired_mst(tmp_path: Path, monkeypatch):
+    path = _write_allowlist(tmp_path, [_entry()])
+    monkeypatch.setattr(allowlist, "_DEFAULT_PATH", path)
+    allowlist.load_allowlist.cache_clear()
+
+    assert allowlist.active_entry("123", today=date(2026, 6, 24)) is not None
+    assert allowlist.active_entry("456", today=date(2026, 6, 24)) is None
+    assert allowlist.active_entry("123", today=date(2100, 1, 1)) is None
+
+
 def test_load_allowlist_rejects_duplicate_mst(tmp_path: Path):
     path = _write_allowlist(tmp_path, [_entry(), _entry()])
     allowlist.load_allowlist.cache_clear()

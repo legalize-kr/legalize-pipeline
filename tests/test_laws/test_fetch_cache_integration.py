@@ -8,7 +8,7 @@ stage rewrites the cache and passes the post-fetch invariant.
 
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 import responses as responses_lib
@@ -105,7 +105,10 @@ def test_main_exits_when_skip_history_detail_fetch_has_errors(monkeypatch):
         fetch_cache.main()
 
 
-def test_fetch_detail_task_skips_allowlisted_upstream_failure(tmp_path: Path, monkeypatch):
+def test_fetch_detail_task_checks_active_allowlisted_failure_without_retries(
+    tmp_path: Path,
+    monkeypatch,
+):
     allowlist_path = tmp_path / "known_detail_failures.yaml"
     allowlist_path.write_text(
         "\n".join([
@@ -120,19 +123,55 @@ def test_fetch_detail_task_skips_allowlisted_upstream_failure(tmp_path: Path, mo
     )
     monkeypatch.setattr(detail_failure_allowlist, "_DEFAULT_PATH", allowlist_path)
     detail_failure_allowlist.load_allowlist.cache_clear()
-    monkeypatch.setattr(
+    from core.counter import Counter
+
+    counter = Counter()
+    with patch.object(
         fetch_cache,
         "get_law_detail",
-        lambda _mst: (_ for _ in ()).throw(RuntimeError("mismatched tag: line 1")),
+        side_effect=RuntimeError("mismatched tag: line 1"),
+    ) as mock_get_law_detail:
+        fetch_cache._fetch_detail_task("123", "", counter)
+
+    mock_get_law_detail.assert_called_once_with("123", max_retries=0)
+    assert counter.snapshot() == (0, 0, 0)
+    assert counter.snapshot_all()["known_failures"] == 1
+
+
+def test_fetch_detail_task_retries_normally_for_unexpected_allowlisted_error(
+    tmp_path: Path,
+    monkeypatch,
+):
+    allowlist_path = tmp_path / "known_detail_failures.yaml"
+    allowlist_path.write_text(
+        "\n".join([
+            "entries:",
+            '  - mst: "123"',
+            '    law_name: "깨진법"',
+            '    reason: "upstream_http_500"',
+            '    expected_error: "500 Server Error"',
+            '    expires_on: "2099-01-01"',
+        ]),
+        encoding="utf-8",
     )
+    monkeypatch.setattr(detail_failure_allowlist, "_DEFAULT_PATH", allowlist_path)
+    detail_failure_allowlist.load_allowlist.cache_clear()
 
     from core.counter import Counter
 
     counter = Counter()
-    fetch_cache._fetch_detail_task("123", "", counter)
+    with patch.object(
+        fetch_cache,
+        "get_law_detail",
+        side_effect=[RuntimeError("connection reset"), None],
+    ) as mock_get_law_detail:
+        fetch_cache._fetch_detail_task("123", "", counter)
 
-    assert counter.snapshot() == (0, 0, 0)
-    assert counter.snapshot_all()["known_failures"] == 1
+    assert mock_get_law_detail.call_args_list == [
+        call("123", max_retries=0),
+        call("123"),
+    ]
+    assert counter.snapshot() == (0, 1, 0)
 
 
 @responses_lib.activate

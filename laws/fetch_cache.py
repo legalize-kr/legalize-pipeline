@@ -57,8 +57,20 @@ def _fetch_detail_task(mst: str, name: str, counter: Counter) -> None:
     if cache.get_detail(mst) is not None:
         counter.inc("cached")
         return
+
     try:
-        get_law_detail(mst)
+        active_entry = detail_failure_allowlist.active_entry(mst)
+        if active_entry is None:
+            get_law_detail(mst)
+        else:
+            # Probe once for upstream recovery, but avoid exponential backoff
+            # when the response still matches the active allowlist entry.
+            try:
+                get_law_detail(mst, max_retries=0)
+            except Exception as e:
+                if detail_failure_allowlist.accepted_entry(mst, e) is not None:
+                    raise
+                get_law_detail(mst)
         counter.inc("fetched")
     except Exception as e:
         entry = detail_failure_allowlist.accepted_entry(mst, e)

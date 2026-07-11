@@ -91,6 +91,20 @@ def accepted_entry(
 ) -> dict | None:
     """Return the unexpired matching allowlist entry, or ``None``."""
 
+    entry = active_entry(mst, today=today)
+    if entry is None:
+        return None
+    if entry["expected_error"] not in str(error):
+        return None
+    return entry
+
+
+def active_entry(
+    mst: str | int | None,
+    today: date | None = None,
+) -> dict | None:
+    """Return the unexpired allowlist entry for ``mst``, or ``None``."""
+
     if mst is None:
         return None
     entry = load_allowlist().get(str(mst))
@@ -98,8 +112,6 @@ def accepted_entry(
         return None
     today_ = today if today is not None else date.today()
     if date.fromisoformat(entry["expires_on"]) <= today_:
-        return None
-    if entry["expected_error"] not in str(error):
         return None
     return entry
 

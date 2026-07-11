@@ -82,13 +82,18 @@ def _attachments_from_xml(root: ElementTree.Element) -> list[dict]:
     return attachments
 
 
-def _request(url: str, params: dict) -> requests.Response:
+def _request(
+    url: str,
+    params: dict,
+    *,
+    max_retries: int = MAX_RETRIES,
+) -> requests.Response:
     """Make a throttled request with retry and exponential backoff."""
     return make_request(
         url, params,
         throttle=_throttle,
         api_key=LAW_API_KEY,
-        max_retries=MAX_RETRIES,
+        max_retries=max_retries,
         backoff_base=BACKOFF_BASE_SECONDS,
     )
 
@@ -145,7 +150,11 @@ def search_laws(
     return {"totalCnt": int(total), "page": int(page_num), "laws": laws}
 
 
-def get_law_detail(mst_id: str | int) -> dict:
+def get_law_detail(
+    mst_id: str | int,
+    *,
+    max_retries: int = MAX_RETRIES,
+) -> dict:
     """Fetch full law text and metadata by MST ID.
 
     Returns dict with metadata fields and 조문 (articles) list.
@@ -161,7 +170,11 @@ def get_law_detail(mst_id: str | int) -> dict:
         logger.debug(f"Cache hit: detail MST={mst_id}")
         raw = cached
     else:
-        resp = _request(f"{LAW_API_BASE}/lawService.do", params)
+        resp = _request(
+            f"{LAW_API_BASE}/lawService.do",
+            params,
+            max_retries=max_retries,
+        )
         raw = resp.content
 
     root = ElementTree.fromstring(raw)
