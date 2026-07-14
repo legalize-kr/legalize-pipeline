@@ -317,6 +317,18 @@ def update(
 
         file_path = None
         try:
+            # A matching MST commit is immutable. Check before resolving paths or
+            # rewriting Markdown so duplicate search results cannot leave dirty,
+            # uncommitted files behind when commit_law's defensive dedup skips.
+            if not dry_run and _commit_exists_for_mst(mst):
+                logger.info(
+                    "  [%s/%s] Commit already exists for MST=%s, skipping",
+                    i,
+                    len(new_laws),
+                    mst,
+                )
+                continue
+
             detail = get_law_detail(mst)
             meta = detail["metadata"]
             law_type = meta.get("법령구분", "")

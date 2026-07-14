@@ -423,6 +423,16 @@ def main() -> None:
         fail_on_path_drift=args.fail_on_path_drift or args.fail_on_new_path_drift,
         allowed_path_drift=allowed_path_drift,
     )
+    if reasons and report.path_drift:
+        for drift in report.path_drift:
+            if allowed_path_drift is not None and drift.expected_path in allowed_path_drift:
+                continue
+            print(
+                "path_drift_detail "
+                f"expected={drift.expected_path} "
+                f"actual={','.join(drift.actual_paths)} "
+                f"mst={drift.mst} law_id={drift.law_id}"
+            )
     if args.json:
         print(json.dumps(_report_to_jsonable(report), ensure_ascii=False, indent=2))
         if reasons:

@@ -235,6 +235,7 @@ def test_empty_body_in_update_quarantines_existing_markdown(tmp_path, monkeypatc
     monkeypatch.setattr(update_mod, "get_processed_msts", lambda: set())
     monkeypatch.setattr(update_mod, "mark_processed", lambda mst: None)
     monkeypatch.setattr(update_mod, "set_last_update", lambda d: None)
+    monkeypatch.setattr(update_mod, "_commit_exists_for_mst", lambda mst: False)
 
     # Stub commit_law (no git)
     monkeypatch.setattr(update_mod, "commit_law", lambda *a, **kw: False)
@@ -259,7 +260,7 @@ def test_empty_body_in_update_quarantines_existing_markdown(tmp_path, monkeypatc
     assert failed_data["failed_msts"]["123"]["reason"] == "empty_body"
 
 
-def test_update_uses_git_dedup_instead_of_checkpoint_filter(tmp_path, monkeypatch):
+def test_update_skips_existing_git_commit_before_rewriting_file(tmp_path, monkeypatch):
     import laws.update as update_mod
     import laws.converter as conv
     import laws.cache as law_cache
@@ -276,16 +277,11 @@ def test_update_uses_git_dedup_instead_of_checkpoint_filter(tmp_path, monkeypatc
         "totalCnt": 1,
     })
     monkeypatch.setattr(update_mod, "get_law_history", lambda name, refresh=False: [])
-    monkeypatch.setattr(update_mod, "get_law_detail", lambda mst: {
-        "metadata": {
-            "법령명한글": "foo법",
-            "법령MST": "123",
-            "법령ID": "",
-            "법령구분": "법률",
-            "공포일자": "20240101",
-        },
-        "articles": [{"조문번호": "1"}],
-    })
+    monkeypatch.setattr(
+        update_mod,
+        "get_law_detail",
+        lambda mst: (_ for _ in ()).throw(AssertionError("detail must not be fetched")),
+    )
     monkeypatch.setattr(update_mod, "law_to_markdown", lambda detail: "# foo")
     monkeypatch.setattr(update_mod, "get_law_path", lambda name, law_type, law_id="": f"kr/{name}/법률.md")
     monkeypatch.setattr(update_mod, "reset_path_registry", lambda: None)
@@ -293,6 +289,7 @@ def test_update_uses_git_dedup_instead_of_checkpoint_filter(tmp_path, monkeypatc
     monkeypatch.setattr(update_mod, "get_processed_msts", lambda: {"123"})
     monkeypatch.setattr(update_mod, "mark_processed", lambda mst: None)
     monkeypatch.setattr(update_mod, "set_last_update", lambda d: None)
+    monkeypatch.setattr(update_mod, "_commit_exists_for_mst", lambda mst: mst == "123")
 
     calls = []
 
@@ -302,9 +299,9 @@ def test_update_uses_git_dedup_instead_of_checkpoint_filter(tmp_path, monkeypatc
 
     monkeypatch.setattr(update_mod, "commit_law", commit_stub)
 
-    assert update_mod.update(days=1, dry_run=False) == 1
-    assert calls
-    assert calls[0][1]["skip_dedup"] is False
+    assert update_mod.update(days=1, dry_run=False) == 0
+    assert calls == []
+    assert not (kr_dir / "foo법" / "법률.md").exists()
 
 
 def test_update_backfills_older_history_discovered_from_current_law(tmp_path, monkeypatch):
