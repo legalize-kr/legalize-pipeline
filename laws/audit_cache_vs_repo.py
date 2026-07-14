@@ -249,6 +249,19 @@ def audit(cache_dir: Path | None = None, repo_dir: Path | None = None) -> AuditR
             continue
         entries.append((mst, meta))
 
+    # A detail XML can remain valid even when the history cache is split across
+    # pre/post-rename law names and one side is missing. Include those details
+    # when choosing each lineage's latest path, while continuing to report them
+    # separately as detail_not_in_history for cache diagnostics.
+    detail_not_in_history = detail_msts - set(mst_to_amendment)
+    for mst in detail_not_in_history:
+        try:
+            meta = _metadata_from_xml(detail_dir / f"{mst}.xml", mst, "")
+        except ET.ParseError:
+            continue
+        if meta is not None:
+            entries.append((mst, meta))
+
     entries.sort(
         key=lambda item: entry_sort_key(
             item[1].get("공포일자", ""),
@@ -331,7 +344,7 @@ def audit(cache_dir: Path | None = None, repo_dir: Path | None = None) -> AuditR
         malformed_history=malformed_history,
         missing_detail=sorted(missing_detail, key=_sort_mst_key),
         empty_or_invalid_detail_meta=sorted(empty_or_invalid_detail_meta, key=_sort_mst_key),
-        detail_not_in_history=sorted(detail_msts - set(mst_to_amendment), key=_sort_mst_key),
+        detail_not_in_history=sorted(detail_not_in_history, key=_sort_mst_key),
         path_drift=path_drift,
         missing_content=missing_content,
     )
