@@ -49,6 +49,22 @@ def test_make_request_retry_on_error():
 
 
 @responses_lib.activate
+def test_make_request_adds_jitter_to_backoff(monkeypatch):
+    sleep = MagicMock()
+    monkeypatch.setattr("core.http.random.uniform", lambda _start, _end: 0.5)
+    monkeypatch.setattr("core.http.time.sleep", sleep)
+    responses_lib.add(responses_lib.GET, TEST_URL, body=ConnectionError("network down"))
+    responses_lib.add(responses_lib.GET, TEST_URL, body=b"<ok/>", status=200)
+
+    make_request(
+        TEST_URL, {}, throttle=_throttle(), api_key="k",
+        max_retries=1, backoff_base=2.0,
+    )
+
+    sleep.assert_called_once_with(2.5)
+
+
+@responses_lib.activate
 def test_make_request_retry_on_429():
     """On 429, retries and eventually succeeds."""
     responses_lib.add(responses_lib.GET, TEST_URL, status=429)

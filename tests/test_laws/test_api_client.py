@@ -237,6 +237,40 @@ def test_get_law_history_matches_full_name_ignoring_whitespace_only():
 
 
 @responses_lib.activate
+def test_get_law_history_matches_equivalent_middle_dots():
+    current_name = "수용ㆍ사용에 관한 법률"
+    old_name = "수용·사용에 관한 법률"
+    responses_lib.add(
+        responses_lib.GET,
+        f"{LAW_API_BASE}/lawSearch.do",
+        body="<html><body><table>" + _history_row("62096", old_name) + "</table></body></html>",
+        status=200,
+        content_type="text/html; charset=utf-8",
+    )
+
+    history = api_client.get_law_history(current_name, refresh=True)
+
+    assert [entry["법령일련번호"] for entry in history] == ["62096"]
+
+
+@responses_lib.activate
+def test_get_law_history_does_not_retry_name_mismatch(monkeypatch):
+    monkeypatch.setattr(api_client, "_EMPTY_HISTORY_RETRIES", 3)
+    responses_lib.add(
+        responses_lib.GET,
+        f"{LAW_API_BASE}/lawSearch.do",
+        body="<html><body><table>" + _history_row("62097", "다른 법령") + "</table></body></html>",
+        status=200,
+        content_type="text/html; charset=utf-8",
+    )
+
+    history = api_client.get_law_history("대상 법령", refresh=True)
+
+    assert history == []
+    assert len(responses_lib.calls) == 1
+
+
+@responses_lib.activate
 def test_get_law_history_raises_on_api_error_response():
     xml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -273,6 +307,27 @@ def test_get_law_history_retries_empty_history_response(monkeypatch):
 
     assert [entry["법령일련번호"] for entry in history] == ["100001"]
     assert len(responses_lib.calls) == 2
+
+
+@responses_lib.activate
+def test_get_law_history_does_not_retry_active_known_empty(monkeypatch):
+    monkeypatch.setattr(
+        api_client,
+        "_active_known_empty_history",
+        lambda _name: {"reason": "upstream_empty", "expires_on": "2099-01-01"},
+    )
+    responses_lib.add(
+        responses_lib.GET,
+        f"{LAW_API_BASE}/lawSearch.do",
+        body="<html><body></body></html>",
+        status=200,
+        content_type="text/html; charset=utf-8",
+    )
+
+    history = api_client.get_law_history("알려진 빈 법령", refresh=True)
+
+    assert history == []
+    assert len(responses_lib.calls) == 1
 
 
 @responses_lib.activate

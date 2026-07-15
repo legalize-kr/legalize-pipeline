@@ -85,6 +85,23 @@ def test_history_name_file_adds_explicit_seed_after_limited_search(tmp_path: Pat
     assert names == ["현행법", "폐지본법"]
 
 
+def test_history_names_deduplicate_equivalent_typography(tmp_path: Path):
+    seed_file = tmp_path / "history_seed_names.txt"
+    seed_file.write_text("공백 없는ㆍ법령\n", encoding="utf-8")
+    laws = [
+        {"법령명한글": "공백 없는ㆍ법령"},
+        {"법령명한글": "공백없는·법령"},
+    ]
+
+    names = fetch_cache._history_names_from_laws(
+        laws,
+        history_name_files=[seed_file],
+        limit=None,
+    )
+
+    assert names == ["공백 없는ㆍ법령"]
+
+
 def test_main_exits_when_skip_history_detail_fetch_has_errors(monkeypatch):
     import laws.history_allowlist as history_allowlist
 

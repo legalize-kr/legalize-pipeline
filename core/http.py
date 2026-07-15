@@ -1,6 +1,7 @@
 """Shared HTTP request with throttle, retry, and exponential backoff."""
 
 import logging
+import random
 import time
 from collections.abc import Callable, Collection
 
@@ -32,7 +33,7 @@ def make_request(
                 on_attempt()
             resp = requests.get(url, params=params, timeout=30)
             if resp.status_code == 429:
-                wait = backoff_base * (2 ** attempt)
+                wait = backoff_base * (2 ** attempt) + random.uniform(0, backoff_base)
                 logger.warning(f"Rate limited (429). Waiting {wait}s before retry.")
                 time.sleep(wait)
                 continue
@@ -44,7 +45,7 @@ def make_request(
                 raise
             if attempt == max_retries:
                 raise
-            wait = backoff_base * (2 ** attempt)
+            wait = backoff_base * (2 ** attempt) + random.uniform(0, backoff_base)
             logger.warning(f"Request failed: {e}. Retry {attempt + 1}/{max_retries} in {wait}s")
             time.sleep(wait)
 

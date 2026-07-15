@@ -21,7 +21,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from . import cache, detail_failure_allowlist
-from .api_client import get_law_detail, get_law_history, search_laws
+from .api_client import (
+    get_law_detail,
+    get_law_history,
+    normalize_history_law_name,
+    search_laws,
+)
 from .config import CONCURRENT_WORKERS
 from .history_allowlist import filter_and_check
 from core.counter import Counter
@@ -182,18 +187,20 @@ def _history_names_from_laws(
     unique_names: list[str] = []
     for law in laws:
         name = law.get("법령명한글", "")
-        if name and name not in seen_names:
-            seen_names.add(name)
+        key = normalize_history_law_name(name)
+        if key and key not in seen_names:
+            seen_names.add(key)
             unique_names.append(name)
 
     if limit:
         unique_names = unique_names[:limit]
-        seen_names = set(unique_names)
+        seen_names = {normalize_history_law_name(name) for name in unique_names}
 
     for path in history_name_files:
         for name in _load_history_name_file(path):
-            if name not in seen_names:
-                seen_names.add(name)
+            key = normalize_history_law_name(name)
+            if key not in seen_names:
+                seen_names.add(key)
                 unique_names.append(name)
 
     return unique_names

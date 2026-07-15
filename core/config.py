@@ -23,7 +23,7 @@ LAW_API_BASE = "https://www.law.go.kr/DRF"
 LAW_API_KEY = os.environ.get("LAW_OC", os.environ.get("LAW_API_KEY", ""))
 
 # Rate limiting
-REQUEST_DELAY_SECONDS = 0.05
+REQUEST_DELAY_SECONDS = float(os.environ.get("LAW_API_REQUEST_DELAY_SECONDS", "0.05"))
 MAX_RETRIES = 5
 BACKOFF_BASE_SECONDS = 3.0
 CONCURRENT_WORKERS = 20

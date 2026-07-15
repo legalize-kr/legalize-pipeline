@@ -3,6 +3,7 @@
 import logging
 import re
 import time
+from datetime import date
 from html import unescape
 from xml.etree import ElementTree
 
@@ -16,6 +17,7 @@ from .config import (
     MAX_RETRIES,
     REQUEST_DELAY_SECONDS,
 )
+from .history_allowlist import load_allowlist as load_empty_history_allowlist
 from core.http import make_request
 from core.throttle import Throttle
 
@@ -271,10 +273,24 @@ def _parse_dot_date(raw: str) -> str:
     return raw.replace(".", "")
 
 
-def _normalize_history_law_name(value: str) -> str:
-    """Normalize law names only for exact lsHistory name matching."""
+def normalize_history_law_name(value: str) -> str:
+    """Normalize equivalent law-name typography for matching and deduplication."""
 
-    return re.sub(r"\s+", "", value or "")
+    normalized = (value or "").translate(
+        str.maketrans({"·": "ㆍ", "・": "ㆍ", "･": "ㆍ"})
+    )
+    return re.sub(r"\s+", "", normalized)
+
+
+def _active_known_empty_history(law_name: str) -> dict | None:
+    """Return an active known-empty allowlist entry for a law name, if any."""
+
+    allowlist = load_empty_history_allowlist()
+    stem = cache.history_path_for(law_name).stem
+    entry = allowlist.get(stem) or allowlist.get(law_name)
+    if entry is None or date.fromisoformat(entry["expires_on"]) <= date.today():
+        return None
+    return entry
 
 
 def get_law_history(law_name: str, refresh: bool = False) -> list[dict]:
@@ -299,10 +315,11 @@ def get_law_history(law_name: str, refresh: bool = False) -> list[dict]:
         if cached == []:
             logging.info("rewriting poisoned empty cache for %s", law_name)
 
-    normalized_law_name = _normalize_history_law_name(law_name)
+    normalized_law_name = normalize_history_law_name(law_name)
 
     for attempt in range(1, _EMPTY_HISTORY_RETRIES + 1):
         all_entries: list[dict] = []
+        candidate_names: set[str] = set()
         page = 1
 
         while True:
@@ -325,10 +342,11 @@ def get_law_history(law_name: str, refresh: bool = False) -> list[dict]:
                 tds = re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)
                 if len(tds) < 8:
                     continue
-                clean = [re.sub(r"<[^>]+>", "", td).strip() for td in tds]
+                clean = [unescape(re.sub(r"<[^>]+>", "", td)).strip() for td in tds]
                 # clean: [순번, 법령명, 소관부처, 제개정구분, 법종구분, 공포번호, 공포일자, 시행일자, 현행연혁]
                 name = clean[1]
-                if _normalize_history_law_name(name) != normalized_law_name:
+                candidate_names.add(name)
+                if normalize_history_law_name(name) != normalized_law_name:
                     continue
                 prom_date = _parse_dot_date(clean[6])
                 enf_date = _parse_dot_date(clean[7])
@@ -349,9 +367,30 @@ def get_law_history(law_name: str, refresh: bool = False) -> list[dict]:
         if all_entries or attempt == _EMPTY_HISTORY_RETRIES:
             break
 
+        known_empty = _active_known_empty_history(law_name)
+        if known_empty is not None:
+            logger.warning(
+                "Known empty history response for %s; reason=%s expires_on=%s; not retrying",
+                law_name,
+                known_empty["reason"],
+                known_empty["expires_on"],
+            )
+            break
+
+        if candidate_names:
+            candidates = sorted(candidate_names)
+            logger.warning(
+                "History response for %s had no exact name match; "
+                "candidate_count=%s candidate_sample=%s; not retrying",
+                law_name,
+                len(candidates),
+                candidates[:5],
+            )
+            break
+
         delay = BACKOFF_BASE_SECONDS * attempt
         logger.warning(
-            "Empty history response for %s; retrying %s/%s in %.1fs",
+            "Empty history response for %s; attempt %s/%s completed; retrying in %.1fs",
             law_name,
             attempt,
             _EMPTY_HISTORY_RETRIES,
