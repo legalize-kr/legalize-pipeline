@@ -9,7 +9,7 @@ def test_daily_cache_refresh_resumes_bounded_ordinance_history_backfill():
     text = Path(".github/workflows/daily-cache-refresh.yml").read_text(encoding="utf-8")
 
     yaml.compose(text)
-    assert "timeout-minutes: 480" in text
+    assert "timeout-minutes: 600" in text
     assert "LEGALIZE_CACHE_DIR: ${{ secrets.LEGALIZE_CACHE_DIR }}" in text
     assert text.index("Link persistent cache") < text.index("Fetch ordinances cache")
     workflow = yaml.load(text, Loader=yaml.BaseLoader)
