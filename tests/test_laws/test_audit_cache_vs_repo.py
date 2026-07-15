@@ -365,6 +365,30 @@ def test_audit_uses_detail_outside_history_for_latest_lineage_path(tmp_path: Pat
     assert report.missing_content == []
 
 
+def test_audit_does_not_flag_newer_repo_mst_against_stale_cache(tmp_path: Path):
+    cache_dir = tmp_path / ".cache"
+    repo_dir = tmp_path / "legalize-kr"
+
+    _write_history(
+        cache_dir,
+        "새이름법",
+        [{"법령일련번호": "1", "제개정구분명": "일부개정"}],
+    )
+    _write_detail(cache_dir, "1", name="새이름법", law_id="000001")
+    _write_repo_markdown(
+        repo_dir,
+        "kr/종전이름법/법률.md",
+        title="종전이름법",
+        law_id="000001",
+        mst="2",
+    )
+
+    report = audit(cache_dir=cache_dir, repo_dir=repo_dir)
+
+    assert report.path_drift == []
+    assert report.missing_content == []
+
+
 def test_audit_reports_history_and_detail_parse_problems(tmp_path: Path):
     cache_dir = tmp_path / ".cache"
     repo_dir = tmp_path / "legalize-kr"

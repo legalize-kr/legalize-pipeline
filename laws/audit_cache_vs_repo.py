@@ -312,6 +312,8 @@ def audit(cache_dir: Path | None = None, repo_dir: Path | None = None) -> AuditR
             for record in by_id.get(entry.law_id, [])
             if _body_has_content(record)
         ]
+        if any(_sort_mst_key(record.mst) > _sort_mst_key(entry.mst) for record in same_id):
+            continue
         if same_id:
             path_drift.append(
                 PathDrift(
