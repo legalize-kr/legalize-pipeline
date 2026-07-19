@@ -52,3 +52,23 @@ def test_repeated_upstream_failures_are_grouped_and_expiring():
     assert upstream_500 is not None and upstream_500["reason"] == "upstream_http_500"
     assert not detail_failure_allowlist.is_listed("1124911", today=date(2026, 7, 18))
     assert not detail_failure_allowlist.is_listed("478868", today=date(2026, 10, 31))
+
+
+def test_latest_repeated_upstream_failures_are_quarantined():
+    detail_failure_allowlist.load_allowlist.cache_clear()
+    missing_error = RuntimeError("invalid 자치법규일련번호=<missing>")
+
+    for serial in ("884951", "884952", "888578", "890062", "1177584"):
+        entry = detail_failure_allowlist.accepted_entry(
+            serial, missing_error, today=date(2026, 7, 20)
+        )
+        assert entry is not None
+        assert entry["reason"] == "upstream_missing_serial"
+
+    upstream_500 = detail_failure_allowlist.accepted_entry(
+        "1037286",
+        RuntimeError("500 Server Error: Internal Server Error"),
+        today=date(2026, 7, 20),
+    )
+    assert upstream_500 is not None
+    assert upstream_500["reason"] == "upstream_http_500"

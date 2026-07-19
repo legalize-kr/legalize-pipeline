@@ -167,3 +167,20 @@ entries:
     reason: "upstream_http_500"
     expected_error: "500 Server Error"
     expires_on: "2026-10-31"
+  # Reproduced during the initial fetch and recovery pass in Daily Cache
+  # Refresh run 29684268884. These responses omit the requested serial.
+  - serials:
+      - "884951"
+      - "884952"
+      - "888578"
+      - "890062"
+      - "1177584"
+    reason: "upstream_missing_serial"
+    expected_error: "invalid 자치법규일련번호=<missing>"
+    expires_on: "2026-10-31"
+  # lawService.do returned HTTP 500 after all retries in both the initial
+  # fetch and recovery pass of Daily Cache Refresh run 29684268884.
+  - serial: "1037286"
+    reason: "upstream_http_500"
+    expected_error: "500 Server Error"
+    expires_on: "2026-10-31"
