@@ -62,6 +62,42 @@ def test_search_ordinances_sends_date_range(monkeypatch):
     api_client.search_ordinances(date_range="20260501~20260511")
 
 
+def test_search_ordinances_retries_malformed_xml(monkeypatch):
+    responses = iter(
+        [
+            Response(b"<LawSearch><![CDATA["),
+            Response(b"<LawSearch><totalCnt>0</totalCnt><page>3</page></LawSearch>"),
+        ]
+    )
+    calls = []
+
+    def fake_request(url, params):
+        calls.append((url, params.copy()))
+        return next(responses)
+
+    monkeypatch.setattr(api_client, "_request", fake_request)
+
+    result = api_client.search_ordinances(page=3)
+
+    assert result["page"] == 3
+    assert len(calls) == 2
+
+
+def test_search_ordinances_stops_after_malformed_xml_retries(monkeypatch):
+    calls = []
+
+    def fake_request(url, params):
+        calls.append((url, params.copy()))
+        return Response(b"<LawSearch><![CDATA[")
+
+    monkeypatch.setattr(api_client, "_request", fake_request)
+
+    with pytest.raises(api_client.ElementTree.ParseError):
+        api_client.search_ordinances()
+
+    assert len(calls) == api_client.MAX_RETRIES + 1
+
+
 def test_get_ordinance_detail_fetches_and_caches(monkeypatch):
     calls = []
 

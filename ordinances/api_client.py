@@ -93,8 +93,20 @@ def search_ordinances(
     if date_range:
         params["prmlYd"] = date_range
 
-    resp = _request(f"{LAW_API_BASE}/lawSearch.do", params)
-    root = ElementTree.fromstring(resp.content)
+    for attempt in range(MAX_RETRIES + 1):
+        resp = _request(f"{LAW_API_BASE}/lawSearch.do", params)
+        try:
+            root = ElementTree.fromstring(resp.content)
+            break
+        except ElementTree.ParseError:
+            if attempt == MAX_RETRIES:
+                raise
+            logger.warning(
+                "Malformed ordinance search XML for page %s; retrying (%s/%s)",
+                page,
+                attempt + 1,
+                MAX_RETRIES,
+            )
     _require_no_api_error(root, f"ordin search page {page}")
     total = int(root.findtext("totalCnt", "0") or 0)
     page_num = int(root.findtext("page", str(page)) or page)

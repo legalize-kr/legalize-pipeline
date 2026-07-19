@@ -87,6 +87,8 @@ def test_load_allowlist_rejects_invalid_expected_error_list(tmp_path: Path, expe
         "2000000100422",
         "2000000008058",
         "2000000008059",
+        "2100000188122",
+        "2100000188121",
     ],
 )
 @pytest.mark.parametrize("status", ["404 Client Error", "500 Server Error"])
