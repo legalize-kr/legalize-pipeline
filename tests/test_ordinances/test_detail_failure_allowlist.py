@@ -58,7 +58,7 @@ def test_latest_repeated_upstream_failures_are_quarantined():
     detail_failure_allowlist.load_allowlist.cache_clear()
     missing_error = RuntimeError("invalid 자치법규일련번호=<missing>")
 
-    for serial in ("884951", "884952", "888578", "890062", "1177584"):
+    for serial in ("884951", "884952", "888578", "890062", "949968", "1177584"):
         entry = detail_failure_allowlist.accepted_entry(
             serial, missing_error, today=date(2026, 7, 20)
         )
