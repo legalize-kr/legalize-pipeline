@@ -25,6 +25,30 @@ def test_commit_exists_found(tmp_path: Path):
         assert git_engine.commit_exists(tmp_path, "법령MST: 253527") is True
 
 
+def test_commit_exists_does_not_match_identifier_prefix(tmp_path: Path):
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / "law.md").write_text("content", encoding="utf-8")
+    subprocess.run(["git", "add", "law.md"], cwd=tmp_path, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-m",
+            "법령MST: 2535270",
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+    assert git_engine.commit_exists(tmp_path, "법령MST: 2535270") is True
+    assert git_engine.commit_exists(tmp_path, "법령MST: 253527") is False
+
+
 def test_commit_with_historical_date_success(tmp_path: Path):
     file_path = Path("kr/민법/법률.md")
     (tmp_path / file_path.parent).mkdir(parents=True)

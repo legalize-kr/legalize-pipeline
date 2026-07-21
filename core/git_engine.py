@@ -43,9 +43,19 @@ def file_is_tracked(repo_dir: Path, file_path: Path) -> bool:
 
 
 def commit_exists(repo_dir: Path, grep_key: str) -> bool:
-    """Check if a commit containing grep_key already exists."""
+    """Check if a commit containing an exact grep_key line already exists."""
     try:
-        return bool(_run_git("log", "--oneline", "--all", f"--grep={grep_key}", cwd=repo_dir))
+        pattern = f"^{re.escape(grep_key)}$"
+        return bool(
+            _run_git(
+                "log",
+                "--oneline",
+                "--all",
+                "--extended-regexp",
+                f"--grep={pattern}",
+                cwd=repo_dir,
+            )
+        )
     except RuntimeError:
         return False
 
