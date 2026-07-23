@@ -93,6 +93,7 @@ def test_newest_cache_refresh_failures_are_quarantined():
         "729366",
         "733015",
         "737279",
+        "888577",
         "1174287",
         "1174290",
         "1174298",

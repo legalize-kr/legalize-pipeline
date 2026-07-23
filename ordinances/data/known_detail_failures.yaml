@@ -225,3 +225,9 @@ entries:
     reason: "upstream_missing_serial"
     expected_error: "invalid 자치법규일련번호=<missing>"
     expires_on: "2026-10-31"
+  # Reproduced during both the initial fetch and recovery pass in Daily Cache
+  # Refresh run 29934184945. The response omits the requested serial.
+  - serial: "888577"
+    reason: "upstream_missing_serial"
+    expected_error: "invalid 자치법규일련번호=<missing>"
+    expires_on: "2026-10-31"
