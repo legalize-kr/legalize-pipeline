@@ -47,6 +47,52 @@ def _raise_if_html_api_error(text: str, context: str) -> None:
         message = unescape(re.sub(r"<[^>]+>", "", message_match.group(1)).strip())
     raise RuntimeError(f"API error for {context}: {result} - {message}")
 
+# law.go.kr intermittently emits <조문참고자료> without its closing tag, which
+# makes the whole document unparseable ("mismatched tag"). The element only ever
+# carries CDATA, so it can be closed at the next 조문 boundary without changing
+# any content. Observed on 법원공무원규칙 MST 194005/200358/204335 and
+# 국토의계획및이용에관한법률시행령 MST 233723.
+_REF_OPEN = "<조문참고자료>"
+_REF_CLOSE = "</조문참고자료>"
+_REF_BOUNDARIES = ("<조문내용>", "</조문단위>", "<조문단위", _REF_OPEN)
+
+
+def repair_law_xml(raw: bytes) -> bytes:
+    """Close unterminated <조문참고자료> elements. Returns raw unchanged if none."""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw
+    if text.count(_REF_OPEN) <= text.count(_REF_CLOSE):
+        return raw
+
+    out: list[str] = []
+    emitted = 0  # everything before this index is already in `out`
+    scan = 0
+    while True:
+        start = text.find(_REF_OPEN, scan)
+        if start < 0:
+            break
+        body_at = start + len(_REF_OPEN)
+        close_at = text.find(_REF_CLOSE, body_at)
+        bounds = [b for b in (text.find(t, body_at) for t in _REF_BOUNDARIES) if b >= 0]
+        next_bound = min(bounds) if bounds else -1
+
+        if close_at >= 0 and (next_bound < 0 or close_at <= next_bound):
+            scan = close_at + len(_REF_CLOSE)
+            continue  # properly closed — leave the span untouched
+
+        if next_bound < 0:
+            break  # nothing to close against; leave as-is
+        out.append(text[emitted:next_bound])
+        out.append(_REF_CLOSE)
+        emitted = scan = next_bound
+
+    if not out:
+        return raw
+    out.append(text[emitted:])
+    return "".join(out).encode("utf-8")
+
 
 def _absolute_law_url(value: str) -> str:
     value = (value or "").strip()
@@ -179,7 +225,16 @@ def get_law_detail(
         )
         raw = resp.content
 
-    root = ElementTree.fromstring(raw)
+    try:
+        root = ElementTree.fromstring(raw)
+    except ElementTree.ParseError:
+        repaired = repair_law_xml(raw)
+        if repaired is raw:
+            raise
+        root = ElementTree.fromstring(repaired)
+        raw = repaired  # cache the repaired form so the fix survives re-imports
+        logger.warning("Repaired malformed XML for MST %s (unclosed 조문참고자료)", mst_id)
+
     _raise_if_api_error(root, f"MST {mst_id}")
 
     # Parse metadata
