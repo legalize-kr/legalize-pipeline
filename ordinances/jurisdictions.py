@@ -43,6 +43,10 @@ class UnknownJurisdiction(ValueError):
 
 def _normalize(raw: str) -> str:
     text = unicodedata.normalize("NFC", raw or "")
+    # law.go.kr marks pre-reorganisation issuers as "(구)…" (e.g. "(구)전라남도"
+    # after the 전남·광주 merger). Those ordinances belong to the old entity, so
+    # drop the marker and resolve against its still-registered name.
+    text = re.sub(r"^\s*\(\s*구\s*\)\s*", "", text)
     for old, new in HANJA_ALIAS.items():
         text = text.replace(old, new)
     return re.sub(r"\s+", " ", text).strip()
