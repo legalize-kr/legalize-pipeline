@@ -6,6 +6,8 @@ import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from core.github_actions import report_partial_fetch
+
 from .config import ADMRULE_REPO, CONCURRENT_WORKERS
 from .fetch_cache import fetch_all_current, fetch_details
 from .import_admrules import import_from_cache
@@ -95,7 +97,16 @@ def main() -> None:
     parser.add_argument("--days", type=int, default=14, help="Look back this many days for daily updates")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    run(repo=args.repo, limit=args.limit, workers=args.workers, commit=args.commit, knd=args.knd, org=args.org, days=args.days)
+    stats = run(
+        repo=args.repo,
+        limit=args.limit,
+        workers=args.workers,
+        commit=args.commit,
+        knd=args.knd,
+        org=args.org,
+        days=args.days,
+    )
+    report_partial_fetch("Administrative rules", stats)
 
 
 if __name__ == "__main__":

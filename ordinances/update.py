@@ -6,6 +6,8 @@ import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from core.github_actions import report_partial_fetch
+
 from .config import CONCURRENT_WORKERS, ORDINANCE_REPO
 from .fetch_cache import fetch_all_current, fetch_details, fetch_history_for_entries
 from .import_ordinances import import_from_cache
@@ -138,7 +140,7 @@ def main() -> None:
     parser.add_argument("--days", type=int, default=14, help="Look back this many days for daily updates")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    run(
+    stats = run(
         repo=args.repo,
         limit=args.limit,
         workers=args.workers,
@@ -148,6 +150,7 @@ def main() -> None:
         sborg=args.sborg,
         days=args.days,
     )
+    report_partial_fetch("Ordinances", stats)
 
 
 if __name__ == "__main__":
