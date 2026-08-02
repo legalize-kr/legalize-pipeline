@@ -152,6 +152,14 @@ def search_laws(
     return {"totalCnt": int(total), "page": int(page_num), "laws": laws}
 
 
+def _item_from_xml(mok: ElementTree.Element) -> dict:
+    return {
+        "목번호": mok.findtext("목번호", ""),
+        "목가지번호": mok.findtext("목가지번호", ""),
+        "목내용": mok.findtext("목내용", ""),
+    }
+
+
 def get_law_detail(
     mst_id: str | int,
     *,
@@ -216,24 +224,24 @@ def get_law_detail(
                 "항가지번호": hang.findtext("항가지번호", ""),
                 "항내용": hang.findtext("항내용", ""),
             }
-            # Parse 호 (subparagraphs)
+            # Parse 호 (subparagraphs) and 목 (items).
+            # 목 arrives in one of two shapes depending on when the payload was
+            # fetched: nested under its 호 (older responses), or as a sibling of
+            # 호 directly under 항 (current responses). In the sibling shape the
+            # owning 호 is the one preceding it in document order.
             subparas = []
-            for ho in hang.findall(".//호"):
-                subpara = {
-                    "호번호": ho.findtext("호번호", ""),
-                    "호가지번호": ho.findtext("호가지번호", ""),
-                    "호내용": ho.findtext("호내용", ""),
-                }
-                # Parse 목 (items)
-                items = []
-                for mok in ho.findall(".//목"):
-                    items.append({
-                        "목번호": mok.findtext("목번호", ""),
-                        "목가지번호": mok.findtext("목가지번호", ""),
-                        "목내용": mok.findtext("목내용", ""),
-                    })
-                subpara["목"] = items
-                subparas.append(subpara)
+            current = None
+            for child in hang:
+                if child.tag == "호":
+                    current = {
+                        "호번호": child.findtext("호번호", ""),
+                        "호가지번호": child.findtext("호가지번호", ""),
+                        "호내용": child.findtext("호내용", ""),
+                        "목": [_item_from_xml(mok) for mok in child.findall(".//목")],
+                    }
+                    subparas.append(current)
+                elif child.tag == "목" and current is not None:
+                    current["목"].append(_item_from_xml(child))
             para["호"] = subparas
             paragraphs.append(para)
         article["항"] = paragraphs

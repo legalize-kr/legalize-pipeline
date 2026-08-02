@@ -337,3 +337,47 @@ def test_get_law_history_from_cache(tmp_path: Path):
     history = api_client.get_law_history("민법")
     assert history == entries
     assert len(responses_lib.calls) == 0
+
+
+def _items_xml(nested: bool) -> bytes:
+    items = (
+        "<목><목번호><![CDATA[가.]]></목번호><목내용><![CDATA[가. 첫째 요건]]></목내용></목>"
+        "<목><목번호><![CDATA[나.]]></목번호><목내용><![CDATA[나. 둘째 요건]]></목내용></목>"
+    )
+    ho2 = "<호><호번호><![CDATA[2.]]></호번호><호내용><![CDATA[2. 다음 각 목의 요건을 갖춘 경우]]></호내용>"
+    ho2 += items + "</호>" if nested else "</호>" + items
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<법령>
+  <기본정보>
+    <법령명_한글><![CDATA[테스트법]]></법령명_한글>
+    <법종구분>법률</법종구분>
+  </기본정보>
+  <조문>
+    <조문단위>
+      <조문번호>3</조문번호>
+      <조문여부>조문</조문여부>
+      <조문제목><![CDATA[적용 대상]]></조문제목>
+      <조문내용><![CDATA[제3조(적용 대상) 본문]]></조문내용>
+      <항>
+        <항번호><![CDATA[③]]></항번호>
+        <항내용><![CDATA[③ 다음 각 호의 어느 하나에 해당하는 경우를 말한다.]]></항내용>
+        <호><호번호><![CDATA[1.]]></호번호><호내용><![CDATA[1. 첫째 경우]]></호내용></호>
+        {ho2}
+      </항>
+    </조문단위>
+  </조문>
+</법령>""".encode()
+
+
+@pytest.mark.parametrize("nested", [False, True], ids=["sibling", "nested"])
+@responses_lib.activate
+def test_get_law_detail_attaches_items_to_owning_subparagraph(nested: bool):
+    """목 arrives nested under its 호 or as a sibling of 호 under 항."""
+    responses_lib.add(
+        responses_lib.GET, f"{LAW_API_BASE}/lawService.do", body=_items_xml(nested), status=200
+    )
+    detail = api_client.get_law_detail("37612")
+    subparas = detail["articles"][0]["항"][0]["호"]
+    assert [len(h["목"]) for h in subparas] == [0, 2]
+    assert subparas[1]["목"][0]["목번호"] == "가."
+    assert subparas[1]["목"][1]["목내용"] == "나. 둘째 요건"
