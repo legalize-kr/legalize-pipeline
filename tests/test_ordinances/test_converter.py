@@ -268,14 +268,32 @@ def test_compute_path_replaces_slashes():
 
 
 def test_xml_to_markdown_preserves_unknown_jurisdiction_under_fallback_path():
+    """A genuinely unrecognised issuer must land in `_미상/` rather than fail."""
+    xml = SAMPLE_XML.replace("서울특별시</지자체기관명>", "없는광역시 어딘가구</지자체기관명>")
+
+    path, markdown = converter.xml_to_markdown(xml)
+
+    assert path == "_미상/없는광역시 어딘가구/조례/서울특별시 테스트 조례/본문.md"
+    assert _frontmatter(markdown)["지자체구분"] == {
+        "광역": "_미상",
+        "기초": "없는광역시 어딘가구",
+    }
+
+
+def test_xml_to_markdown_resolves_former_jurisdiction_marker():
+    """`(구)…` marks a pre-reorganisation issuer, so it belongs to the old entity.
+
+    Without the marker stripped this fell into `_미상/`, splitting one 교육청's
+    ordinances across two roots.
+    """
     xml = SAMPLE_XML.replace("서울특별시</지자체기관명>", "(구)전라남도교육청</지자체기관명>")
 
     path, markdown = converter.xml_to_markdown(xml)
 
-    assert path == "_미상/(구)전라남도교육청/조례/서울특별시 테스트 조례/본문.md"
+    assert path == "전라남도/_교육청/조례/서울특별시 테스트 조례/본문.md"
     assert _frontmatter(markdown)["지자체구분"] == {
-        "광역": "_미상",
-        "기초": "(구)전라남도교육청",
+        "광역": "전라남도",
+        "기초": "_교육청",
     }
 
 
