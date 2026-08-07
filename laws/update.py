@@ -492,7 +492,11 @@ def update(
                 extra_paths=extra_commit_paths,
             )
             if result:
+                from .failures import clear_failed
                 mark_processed(mst)
+                # 해소된 MST 를 원장에 남겨두면 CI 델타 게이트가 계속
+                # 신규 실패로 보고한다.
+                clear_failed(mst)
                 committed += 1
                 snapshot = current_snapshots.get(str(law_id))
                 if (

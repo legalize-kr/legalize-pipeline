@@ -178,7 +178,11 @@ def import_law_with_history(
 
             result = commit_law(file_path, commit_msg, prom_date, mst)
             if result:
+                from .failures import clear_failed
                 mark_processed(mst)
+                # 해소된 MST 를 원장에 남겨두면 CI 델타 게이트가 계속
+                # 신규 실패로 보고한다.
+                clear_failed(mst)
                 committed += 1
                 logger.info(f"  [{i}/{len(history)}] Committed MST={mst} {prom_date} {amendment}")
 
@@ -365,7 +369,11 @@ def import_from_cache(
 
             result = commit_law(file_path, commit_msg, prom_date, mst)
             if result:
+                from .failures import clear_failed
                 mark_processed(mst)
+                # 해소된 MST 를 원장에 남겨두면 CI 델타 게이트가 계속
+                # 신규 실패로 보고한다.
+                clear_failed(mst)
                 committed += 1
                 logger.info(f"  [{i}/{len(entries)}] Committed MST={mst} {prom_date} {law_name}")
 
@@ -525,7 +533,11 @@ def import_from_csv(
                 date = "2000-01-01"
 
             if commit_law(file_path, commit_msg, date, mst):
+                from .failures import clear_failed
                 mark_processed(mst)
+                # 해소된 MST 를 원장에 남겨두면 CI 델타 게이트가 계속
+                # 신규 실패로 보고한다.
+                clear_failed(mst)
                 committed += 1
         except ValueError as e:  # empty body (P1)
             from .failures import log_failure, mark_failed, mark_failed_and_quarantine
