@@ -516,3 +516,9 @@ entries:
     reason: "upstream_html_error_page"
     expected_error: "unexpected admrule detail root tag"
     expires_on: "2026-10-31"
+  # Reproduced with the same HTTP 500 in Daily Cache Refresh runs
+  # 30207300327, 30376390776, and 30467581002.
+  - serial: "2100000283018"
+    reason: "upstream_http_500"
+    expected_error: "500 Server Error"
+    expires_on: "2026-10-31"

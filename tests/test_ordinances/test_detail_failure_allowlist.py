@@ -111,3 +111,43 @@ def test_newest_cache_refresh_failures_are_quarantined():
     )
     assert malformed is not None
     assert malformed["reason"] == "upstream_malformed_xml"
+
+
+def test_repeated_missing_serials_are_quarantined_after_three_runs():
+    detail_failure_allowlist.load_allowlist.cache_clear()
+    missing_error = RuntimeError("invalid 자치법규일련번호=<missing>")
+    serials = (
+        "866942",
+        "874079",
+        "1001768",
+        "771298",
+        "1039553",
+        "849946",
+        "859315",
+        "852874",
+        "960467",
+        "1152684",
+        "770827",
+        "862899",
+        "834214",
+        "849561",
+        "795165",
+        "868775",
+        "874969",
+        "1004478",
+    )
+
+    for serial in serials:
+        entry = detail_failure_allowlist.accepted_entry(
+            serial,
+            missing_error,
+            today=date(2026, 7, 30),
+        )
+        assert entry is not None
+        assert entry["reason"] == "upstream_missing_serial"
+
+    assert detail_failure_allowlist.accepted_entry(
+        "866942",
+        RuntimeError("500 Server Error"),
+        today=date(2026, 7, 30),
+    ) is None

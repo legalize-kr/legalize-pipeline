@@ -120,3 +120,19 @@ def test_default_allowlist_tracks_other_alternating_failures(serial: str, error:
 @pytest.mark.parametrize("serial", ["2100000193865", "2100000101710"])
 def test_default_allowlist_rejects_unverified_error_for_alternating_failures(serial: str):
     assert allowlist.accepted_entry(serial, "429 Client Error", today=date(2026, 7, 12)) is None
+
+
+def test_repeated_http_500_is_quarantined_after_three_runs():
+    entry = allowlist.accepted_entry(
+        "2100000283018",
+        "500 Server Error: Internal Server Error",
+        today=date(2026, 7, 30),
+    )
+
+    assert entry is not None
+    assert entry["reason"] == "upstream_http_500"
+    assert allowlist.accepted_entry(
+        "2100000283018",
+        "404 Client Error",
+        today=date(2026, 7, 30),
+    ) is None

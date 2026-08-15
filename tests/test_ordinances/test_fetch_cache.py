@@ -122,6 +122,35 @@ def test_fetch_history_for_entries_filters_same_identity(monkeypatch):
     assert calls == [("현재 조례", 1, "2")]
 
 
+def test_fetch_history_for_entries_removes_smart_quotes_from_search_query(monkeypatch):
+    calls = []
+
+    def fake_search_ordinances(query, page, display, nw):
+        calls.append(query)
+        return {
+            "totalCnt": 1,
+            "ordinances": [
+                {
+                    "자치법규ID": "same",
+                    "자치법규일련번호": "old",
+                    "자치법규명": "이전 조례",
+                    "자치법규종류": "조례",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(fetch_cache, "search_ordinances", fake_search_ordinances)
+    monkeypatch.setattr(fetch_cache, "record_requests", lambda count, corpus: None)
+
+    history = fetch_cache.fetch_history_for_entries(
+        [{"자치법규ID": "same", "자치법규명": "일본군‘위안부’ 지원 조례", "자치법규종류": "조례"}],
+        ["조례"],
+    )
+
+    assert [entry["자치법규일련번호"] for entry in history] == ["old"]
+    assert calls == ["일본군위안부 지원 조례"]
+
+
 def test_fetch_details_deduplicates_and_limits(monkeypatch):
     fetched = []
     recorded = []

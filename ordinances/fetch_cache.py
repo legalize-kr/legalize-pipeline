@@ -157,9 +157,14 @@ def fetch_history_for_entries(
             continue
         seen_queries.add(query_key)
 
+        # lawSearch.do returns smart quotes as undefined HTML entities in its
+        # XML response and does not match the quoted title. The ordinance ID
+        # filter below still limits results to the requested identity.
+        search_query = query.translate(str.maketrans("", "", "‘’“”"))
+
         page = 1
         while True:
-            result = search_ordinances(query=query, page=page, display=display, nw="2")
+            result = search_ordinances(query=search_query, page=page, display=display, nw="2")
             record_requests(1, corpus="ordinances")
             for candidate in result["ordinances"]:
                 serial = str(candidate.get("자치법규일련번호", ""))
