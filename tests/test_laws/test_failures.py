@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 import pytest
+from requests.exceptions import HTTPError
 
 import laws.failures as failures
 
@@ -20,6 +21,7 @@ def test_absent_file_returns_empty_sections():
 
 def test_classify_by_isinstance():
     assert failures.classify(ValueError("x")) == "empty_body"
+    assert failures.classify(HTTPError("x")) == "api_error"
     assert failures.classify(RuntimeError("x")) == "api_error"
     assert failures.classify(OSError("x")) == "io_error"
     assert failures.classify(KeyError("x")) == "metadata_missing"
@@ -30,6 +32,20 @@ def test_mark_failed_persists_mst_section():
     failures.mark_failed("111", "empty_body", detail="bad", step="parse")
     assert "111" in failures.get_failed_msts()
     assert "111" not in failures.get_search_misses()
+
+
+def test_clear_failed_removes_only_resolved_mst():
+    failures.mark_failed("111", "api_error")
+    failures.mark_failed("222", "empty_body")
+    failures.mark_search_miss("민법")
+
+    failures.clear_failed("111")
+    failures.clear_failed("missing")
+
+    remaining = failures.get_failed_msts()
+    assert set(remaining) == {"222"}
+    assert remaining["222"]["reason"] == "empty_body"
+    assert set(failures.get_search_misses()) == {"민법"}
 
 
 def test_mark_search_miss_goes_to_search_misses_only():

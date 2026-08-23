@@ -4,6 +4,7 @@ import json
 import subprocess
 
 import pytest
+from requests.exceptions import HTTPError
 
 
 def test_find_existing_path_for_law_id(tmp_path, monkeypatch):
@@ -263,6 +264,7 @@ def test_empty_body_in_update_quarantines_existing_markdown(tmp_path, monkeypatc
 
 def test_update_skips_existing_git_commit_before_rewriting_file(tmp_path, monkeypatch):
     import laws.update as update_mod
+    import laws.failures as failures
     import laws.converter as conv
     import laws.cache as law_cache
 
@@ -272,6 +274,8 @@ def test_update_skips_existing_git_commit_before_rewriting_file(tmp_path, monkey
     monkeypatch.setattr(update_mod, "LAW_API_KEY", "test-key")
     monkeypatch.setattr(conv, "KR_DIR", kr_dir, raising=False)
     monkeypatch.setattr(law_cache, "CACHE_DIR", tmp_path / ".cache")
+    monkeypatch.setattr(failures, "FAILED_FILE", tmp_path / ".failed_msts.json")
+    failures.mark_failed("123", "io_error")
 
     monkeypatch.setattr(update_mod, "search_laws", lambda **kw: {
         "laws": [{"법령일련번호": "123", "법령명한글": "foo법", "공포일자": "20240101"}],
@@ -303,6 +307,62 @@ def test_update_skips_existing_git_commit_before_rewriting_file(tmp_path, monkey
     assert update_mod.update(days=1, dry_run=False) == 0
     assert calls == []
     assert not (kr_dir / "foo법" / "법률.md").exists()
+    assert failures.get_failed_msts() == {}
+
+
+def test_update_records_http_error_then_clears_it_after_successful_retry(
+    tmp_path,
+    monkeypatch,
+):
+    import laws.update as update_mod
+    import laws.failures as failures
+    import laws.converter as conv
+    import laws.cache as law_cache
+
+    kr_dir = tmp_path / "kr"
+    kr_dir.mkdir()
+    monkeypatch.setattr(update_mod, "KR_DIR", kr_dir)
+    monkeypatch.setattr(update_mod, "LAW_API_KEY", "test-key")
+    monkeypatch.setattr(conv, "KR_DIR", kr_dir, raising=False)
+    monkeypatch.setattr(law_cache, "CACHE_DIR", tmp_path / ".cache")
+    monkeypatch.setattr(failures, "FAILED_FILE", tmp_path / ".failed_msts.json")
+
+    monkeypatch.setattr(update_mod, "search_laws", lambda **kw: {
+        "laws": [{"법령일련번호": "123", "법령명한글": "foo법", "공포일자": "20240101"}],
+        "totalCnt": 1,
+    })
+    monkeypatch.setattr(update_mod, "get_law_history", lambda name, refresh=False: [])
+    detail = {
+        "metadata": {
+            "법령명한글": "foo법",
+            "법령MST": "123",
+            "법령ID": "000123",
+            "법령구분": "법률",
+            "공포일자": "20240101",
+            "공포번호": "1",
+        },
+        "articles": [],
+        "addenda": [],
+    }
+    monkeypatch.setattr(
+        update_mod,
+        "get_law_detail",
+        lambda mst: (_ for _ in ()).throw(HTTPError("500 Server Error")),
+    )
+    monkeypatch.setattr(update_mod, "law_to_markdown", lambda detail: "# foo\n")
+    monkeypatch.setattr(update_mod, "reset_path_registry", lambda: None)
+    monkeypatch.setattr(update_mod, "get_last_update", lambda: None)
+    monkeypatch.setattr(update_mod, "mark_processed", lambda mst: None)
+    monkeypatch.setattr(update_mod, "set_last_update", lambda d: None)
+    monkeypatch.setattr(update_mod, "_commit_exists_for_mst", lambda mst: False)
+    monkeypatch.setattr(update_mod, "commit_law", lambda *args, **kwargs: True)
+
+    assert update_mod.update(days=1, dry_run=False) == 0
+    assert failures.get_failed_msts()["123"]["reason"] == "api_error"
+
+    monkeypatch.setattr(update_mod, "get_law_detail", lambda mst: detail)
+    assert update_mod.update(days=1, dry_run=False) == 1
+    assert failures.get_failed_msts() == {}
 
 
 def test_update_backfills_older_history_discovered_from_current_law(tmp_path, monkeypatch):

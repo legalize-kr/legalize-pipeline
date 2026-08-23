@@ -11,6 +11,8 @@ import threading
 import time
 from pathlib import Path
 
+from requests.exceptions import RequestException
+
 from .config import CACHE_ROOT
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,8 @@ _LOCK = threading.Lock()
 
 EXCEPTION_REASON_MAP: dict[type[BaseException], str] = {
     ValueError: "empty_body",
+    # requests exceptions also inherit OSError; keep this before OSError.
+    RequestException: "api_error",
     RuntimeError: "api_error",
     OSError: "io_error",
     KeyError: "metadata_missing",
@@ -75,6 +79,14 @@ def mark_failed(
             "failed_at": time.time(),
         }
         _write(data)
+
+
+def clear_failed(mst: str) -> None:
+    """Remove a resolved MST from the failure ledger."""
+    with _LOCK:
+        data = _load()
+        if data["failed_msts"].pop(str(mst), None) is not None:
+            _write(data)
 
 
 def mark_search_miss(

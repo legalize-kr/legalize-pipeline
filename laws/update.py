@@ -30,6 +30,7 @@ from .converter import (
     law_to_markdown,
     reset_path_registry,
 )
+from .failures import clear_failed
 from .git_engine import commit_law, commit_law_changes
 from core.git_engine import commit_exists
 from .import_laws import build_commit_msg
@@ -438,6 +439,7 @@ def update(
             # rewriting Markdown so duplicate search results cannot leave dirty,
             # uncommitted files behind when commit_law's defensive dedup skips.
             if not dry_run and _commit_exists_for_mst(mst):
+                clear_failed(mst)
                 logger.info(
                     "  [%s/%s] Commit already exists for MST=%s, skipping",
                     i,
@@ -492,6 +494,7 @@ def update(
                 extra_paths=extra_commit_paths,
             )
             if result:
+                clear_failed(mst)
                 mark_processed(mst)
                 committed += 1
                 snapshot = current_snapshots.get(str(law_id))
