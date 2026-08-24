@@ -163,6 +163,23 @@ def _assert_no_empty_history_cache() -> None:
         raise RuntimeError("History cache invariant violated: " + "; ".join(problems))
 
 
+def _load_all_cached_history_msts() -> set[str]:
+    """Return every MST retained by a non-empty history cache entry."""
+
+    history_dir = cache.CACHE_DIR / "history"
+    if not history_dir.exists():
+        return set()
+
+    msts: set[str] = set()
+    for path in history_dir.glob("*.json"):
+        entries = json.loads(path.read_text(encoding="utf-8"))
+        for entry in entries:
+            mst = entry.get("법령일련번호")
+            if mst:
+                msts.add(str(mst))
+    return msts
+
+
 def _load_history_name_file(path: Path) -> list[str]:
     """Load explicit law-name seeds from a newline-delimited text file."""
 
@@ -340,8 +357,10 @@ def main():
 
     _assert_no_empty_history_cache()
 
-    # Step 2: Fetch detail for each MST found in history
-    mst_list = sorted(set(all_msts))
+    # Step 2: Fetch detail for each MST found or retained in history. Repealed
+    # laws can disappear from the current lawSearch list, so their cached
+    # histories must remain part of the detail-fetch inventory.
+    mst_list = sorted(set(all_msts) | _load_all_cached_history_msts())
     logger.info(f"Fetching detail for {len(mst_list)} historical MSTs (workers={workers})...")
 
     detail_counter = Counter()

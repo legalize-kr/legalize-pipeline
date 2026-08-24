@@ -9,6 +9,7 @@ import responses as responses_lib
 
 import laws.cache as law_cache
 import laws.api_client as api_client
+from laws.converter import law_to_markdown
 
 LAW_API_BASE = "https://www.law.go.kr/DRF"
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
@@ -254,6 +255,132 @@ def test_get_law_history_matches_equivalent_middle_dots():
 
 
 @responses_lib.activate
+def test_get_law_history_falls_back_to_canonical_middle_dot_query():
+    law_name = "인지 첩부·첨부 및 공탁 제공에 관한 특례법"
+    responses_lib.add(
+        responses_lib.GET,
+        f"{LAW_API_BASE}/lawSearch.do",
+        body="<html><body></body></html>",
+        status=200,
+        content_type="text/html; charset=utf-8",
+    )
+    responses_lib.add(
+        responses_lib.GET,
+        f"{LAW_API_BASE}/lawSearch.do",
+        body="<html><body><table>" + _history_row("130810", law_name) + "</table></body></html>",
+        status=200,
+        content_type="text/html; charset=utf-8",
+    )
+
+    history = api_client.get_law_history(law_name, refresh=True)
+
+    assert [entry["법령일련번호"] for entry in history] == ["130810"]
+    assert responses_lib.calls[1].request.params["query"] == (
+        "인지 첩부ㆍ첨부 및 공탁 제공에 관한 특례법"
+    )
+
+
+@responses_lib.activate
+def test_get_law_history_falls_back_to_longest_token_for_long_name():
+    law_name = (
+        "대한민국과 아메리카합중국 간의 상호방위조약 제4조에 의한 시설과 구역 및 "
+        "대한민국에서의 합중국 군대의 지위에 관한 협정의 시행에 관한 형사특별법"
+    )
+    responses_lib.add(
+        responses_lib.GET,
+        f"{LAW_API_BASE}/lawSearch.do",
+        body="<html><body></body></html>",
+        status=200,
+        content_type="text/html; charset=utf-8",
+    )
+    responses_lib.add(
+        responses_lib.GET,
+        f"{LAW_API_BASE}/lawSearch.do",
+        body="<html><body><table>" + _history_row("112382", law_name) + "</table></body></html>",
+        status=200,
+        content_type="text/html; charset=utf-8",
+    )
+
+    history = api_client.get_law_history(law_name, refresh=True)
+
+    assert [entry["법령일련번호"] for entry in history] == ["112382"]
+    assert responses_lib.calls[1].request.params["query"] == "아메리카합중국"
+
+
+@responses_lib.activate
+def test_get_law_history_falls_back_to_suffix_for_long_name_without_spaces():
+    law_name = (
+        "대한민국과아메리카합중국간의상호방위조약제4조에의한시설과구역및대한민국에서의"
+        "합중국군대의지위에관한협정의시행에관한민사특별법시행령"
+    )
+    responses_lib.add(
+        responses_lib.GET,
+        f"{LAW_API_BASE}/lawSearch.do",
+        body="<html><body></body></html>",
+        status=200,
+        content_type="text/html; charset=utf-8",
+    )
+    responses_lib.add(
+        responses_lib.GET,
+        f"{LAW_API_BASE}/lawSearch.do",
+        body="<html><body><table>" + _history_row("192768", law_name) + "</table></body></html>",
+        status=200,
+        content_type="text/html; charset=utf-8",
+    )
+
+    history = api_client.get_law_history(law_name, refresh=True)
+
+    assert [entry["법령일련번호"] for entry in history] == ["192768"]
+    assert responses_lib.calls[1].request.params["query"] == law_name[-20:]
+
+
+@responses_lib.activate
+def test_get_law_history_refresh_preserves_cached_msts_missing_from_response():
+    law_name = "국군방첩사령부령"
+    cached_amendment = {
+        "법령일련번호": "249921",
+        "법령명한글": law_name,
+        "제개정구분명": "제정",
+        "법령구분": "대통령령",
+        "공포번호": "33409",
+        "공포일자": "20230418",
+        "시행일자": "20230418",
+    }
+    cached_repeal = {
+        "법령일련번호": "288331",
+        "법령명한글": law_name,
+        "제개정구분명": "폐지",
+        "법령구분": "대통령령",
+        "공포번호": "36526",
+        "공포일자": "20260728",
+        "시행일자": "20260728",
+    }
+    law_cache.put_history(law_name, [cached_amendment, cached_repeal])
+    responses_lib.add(
+        responses_lib.GET,
+        f"{LAW_API_BASE}/lawSearch.do",
+        body=(
+            "<html><body><table>"
+            + _history_row(
+                "249921",
+                law_name,
+                amendment="일부개정",
+                prom_date="2023.4.18",
+            )
+            + "</table></body></html>"
+        ),
+        status=200,
+        content_type="text/html; charset=utf-8",
+    )
+
+    history = api_client.get_law_history(law_name, refresh=True)
+
+    assert [entry["법령일련번호"] for entry in history] == ["249921", "288331"]
+    assert history[0]["제개정구분명"] == "일부개정"
+    assert law_cache.get_history(law_name) == history
+
+
+@responses_lib.activate
 def test_get_law_history_does_not_retry_name_mismatch(monkeypatch):
     monkeypatch.setattr(api_client, "_EMPTY_HISTORY_RETRIES", 3)
     responses_lib.add(
@@ -337,3 +464,57 @@ def test_get_law_history_from_cache(tmp_path: Path):
     history = api_client.get_law_history("민법")
     assert history == entries
     assert len(responses_lib.calls) == 0
+
+
+def _items_xml(nested: bool) -> bytes:
+    items = (
+        "<목><목번호><![CDATA[가.]]></목번호><목내용><![CDATA[가. 첫째 요건]]></목내용></목>"
+        "<목><목번호><![CDATA[나.]]></목번호><목내용><![CDATA[나. 둘째 요건]]></목내용></목>"
+    )
+    second = (
+        "<호><호번호><![CDATA[2.]]></호번호>"
+        "<호내용><![CDATA[2. 다음 각 목의 요건을 갖춘 경우]]></호내용>"
+    )
+    second += items + "</호>" if nested else "</호>" + items
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<법령>
+  <기본정보>
+    <법령명_한글><![CDATA[테스트법]]></법령명_한글>
+    <법종구분>법률</법종구분>
+  </기본정보>
+  <조문>
+    <조문단위>
+      <조문번호>3</조문번호>
+      <조문여부>조문</조문여부>
+      <조문제목><![CDATA[적용 대상]]></조문제목>
+      <조문내용><![CDATA[제3조(적용 대상) 본문]]></조문내용>
+      <항>
+        <항번호><![CDATA[①]]></항번호>
+        <항내용><![CDATA[① 다음 각 호의 어느 하나에 해당하는 경우를 말한다.]]></항내용>
+        <호><호번호><![CDATA[1.]]></호번호><호내용><![CDATA[1. 첫째 경우]]></호내용></호>
+        {second}
+      </항>
+    </조문단위>
+  </조문>
+</법령>""".encode()
+
+
+@pytest.mark.parametrize("nested", [True, False], ids=["nested", "sibling"])
+@responses_lib.activate
+def test_get_law_detail_preserves_items_in_both_upstream_layouts(nested: bool):
+    responses_lib.add(
+        responses_lib.GET,
+        f"{LAW_API_BASE}/lawService.do",
+        body=_items_xml(nested),
+        status=200,
+    )
+
+    detail = api_client.get_law_detail("37612")
+    subparagraphs = detail["articles"][0]["항"][0]["호"]
+
+    assert [len(subparagraph["목"]) for subparagraph in subparagraphs] == [0, 2]
+    assert subparagraphs[1]["목"][0]["목번호"] == "가."
+    assert subparagraphs[1]["목"][1]["목내용"] == "나. 둘째 요건"
+    markdown = law_to_markdown(detail)
+    assert "    가\\. 첫째 요건" in markdown
+    assert "    나\\. 둘째 요건" in markdown

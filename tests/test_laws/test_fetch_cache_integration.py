@@ -102,6 +102,22 @@ def test_history_names_deduplicate_equivalent_typography(tmp_path: Path):
     assert names == ["공백 없는ㆍ법령"]
 
 
+def test_load_all_cached_history_msts_includes_repealed_law_entries():
+    law_cache.put_history(
+        "현행법",
+        [{"법령일련번호": "200", "법령명한글": "현행법"}],
+    )
+    law_cache.put_history(
+        "폐지법",
+        [
+            {"법령일련번호": "100", "법령명한글": "폐지법"},
+            {"법령일련번호": "101", "법령명한글": "폐지법"},
+        ],
+    )
+
+    assert fetch_cache._load_all_cached_history_msts() == {"100", "101", "200"}
+
+
 def test_main_exits_when_skip_history_detail_fetch_has_errors(monkeypatch):
     import laws.history_allowlist as history_allowlist
 

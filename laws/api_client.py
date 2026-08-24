@@ -152,6 +152,32 @@ def search_laws(
     return {"totalCnt": int(total), "page": int(page_num), "laws": laws}
 
 
+def _item_from_xml(node: ElementTree.Element) -> dict:
+    return {
+        "목번호": node.findtext("목번호", ""),
+        "목가지번호": node.findtext("목가지번호", ""),
+        "목내용": node.findtext("목내용", ""),
+    }
+
+
+def _subparagraphs_from_xml(paragraph: ElementTree.Element) -> list[dict]:
+    """Parse both nested and sibling item layouts in document order."""
+    subparagraphs = []
+    current_subparagraph = None
+    for node in paragraph.iter():
+        if node.tag == "호":
+            current_subparagraph = {
+                "호번호": node.findtext("호번호", ""),
+                "호가지번호": node.findtext("호가지번호", ""),
+                "호내용": node.findtext("호내용", ""),
+                "목": [],
+            }
+            subparagraphs.append(current_subparagraph)
+        elif node.tag == "목" and current_subparagraph is not None:
+            current_subparagraph["목"].append(_item_from_xml(node))
+    return subparagraphs
+
+
 def get_law_detail(
     mst_id: str | int,
     *,
@@ -216,25 +242,7 @@ def get_law_detail(
                 "항가지번호": hang.findtext("항가지번호", ""),
                 "항내용": hang.findtext("항내용", ""),
             }
-            # Parse 호 (subparagraphs)
-            subparas = []
-            for ho in hang.findall(".//호"):
-                subpara = {
-                    "호번호": ho.findtext("호번호", ""),
-                    "호가지번호": ho.findtext("호가지번호", ""),
-                    "호내용": ho.findtext("호내용", ""),
-                }
-                # Parse 목 (items)
-                items = []
-                for mok in ho.findall(".//목"):
-                    items.append({
-                        "목번호": mok.findtext("목번호", ""),
-                        "목가지번호": mok.findtext("목가지번호", ""),
-                        "목내용": mok.findtext("목내용", ""),
-                    })
-                subpara["목"] = items
-                subparas.append(subpara)
-            para["호"] = subparas
+            para["호"] = _subparagraphs_from_xml(hang)
             paragraphs.append(para)
         article["항"] = paragraphs
         articles.append(article)
@@ -293,6 +301,87 @@ def _active_known_empty_history(law_name: str) -> dict | None:
     return entry
 
 
+def _merge_history_entries(cached: list[dict], fetched: list[dict]) -> list[dict]:
+    """Merge append-only history by MST, preferring refreshed metadata."""
+    by_mst = {
+        entry["법령일련번호"]: entry
+        for entry in cached
+        if entry.get("법령일련번호")
+    }
+    for entry in fetched:
+        mst = entry.get("법령일련번호")
+        if mst:
+            by_mst[mst] = entry
+    return sorted(
+        by_mst.values(),
+        key=lambda entry: (entry.get("공포일자", ""), entry["법령일련번호"]),
+    )
+
+
+def _history_query_candidates(law_name: str) -> list[str]:
+    """Return bounded fallback queries for upstream full-name search failures."""
+
+    candidates = [law_name]
+    canonical_dots = law_name.translate(str.maketrans({"·": "ㆍ", "・": "ㆍ", "･": "ㆍ"}))
+    if canonical_dots != law_name:
+        candidates.append(canonical_dots)
+
+    if len(law_name) >= 40:
+        tokens = re.split(r"[\s·ㆍ・･]+", law_name)
+        longest = max((token for token in tokens if len(token) >= 4), key=len, default="")
+        if longest:
+            candidates.append(longest)
+        candidates.append(law_name[-20:])
+
+    return list(dict.fromkeys(candidate for candidate in candidates if candidate))
+
+
+def _fetch_history_query(query: str, normalized_law_name: str) -> tuple[list[dict], set[str]]:
+    """Fetch one lsHistory query and retain rows matching the target full name."""
+
+    entries: list[dict] = []
+    candidate_names: set[str] = set()
+    page = 1
+    while True:
+        resp = _request(f"{LAW_API_BASE}/lawSearch.do", {
+            "target": "lsHistory",
+            "query": query,
+            "type": "HTML",
+            "display": "100",
+            "page": str(page),
+        })
+        _raise_if_html_api_error(resp.text, f"law history query={query!r}")
+
+        rows = re.findall(r"<tr[^>]*>(.*?)</tr>", resp.text, re.DOTALL)
+        for row in rows:
+            mst_match = re.search(r"MST=(\d+)", row)
+            if not mst_match:
+                continue
+            tds = re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)
+            if len(tds) < 8:
+                continue
+            clean = [unescape(re.sub(r"<[^>]+>", "", td)).strip() for td in tds]
+            name = clean[1]
+            candidate_names.add(name)
+            if normalize_history_law_name(name) != normalized_law_name:
+                continue
+            entries.append({
+                "법령일련번호": mst_match.group(1),
+                "법령명한글": name,
+                "제개정구분명": clean[3],
+                "법령구분": clean[4],
+                "공포번호": clean[5].replace("제 ", "").replace("호", "").strip(),
+                "공포일자": _parse_dot_date(clean[6]),
+                "시행일자": _parse_dot_date(clean[7]),
+            })
+
+        if len(rows) < 10:
+            break
+        page += 1
+
+    return entries, candidate_names
+
+
 def get_law_history(law_name: str, refresh: bool = False) -> list[dict]:
     """Fetch amendment history for a law via lsHistory HTML endpoint.
 
@@ -300,15 +389,14 @@ def get_law_history(law_name: str, refresh: bool = False) -> list[dict]:
         law_name: Law name (e.g., "민법"). History rows must match the full name
             after whitespace normalization.
         refresh: If True, bypass the local history cache and refetch from the API.
-            The cache is then rewritten with the fresh result. Use this when the
-            upstream may have added new entries (e.g., 타법개정) that the locally
-            cached history list does not reflect.
+            Refreshed entries replace cached metadata for the same MST, while
+            cached MSTs missing from a transient upstream response are retained.
 
     Returns list of dicts sorted oldest-first, each with:
     법령일련번호, 법령명한글, 제개정구분명, 법령구분, 공포번호, 공포일자, 시행일자
     """
+    cached = cache.get_history(law_name)
     if not refresh:
-        cached = cache.get_history(law_name)
         if cached:
             logger.debug(f"Cache hit: history law_name={law_name}")
             return cached
@@ -320,49 +408,14 @@ def get_law_history(law_name: str, refresh: bool = False) -> list[dict]:
     for attempt in range(1, _EMPTY_HISTORY_RETRIES + 1):
         all_entries: list[dict] = []
         candidate_names: set[str] = set()
-        page = 1
-
-        while True:
-            resp = _request(f"{LAW_API_BASE}/lawSearch.do", {
-                "target": "lsHistory",
-                "query": law_name,
-                "type": "HTML",
-                "display": "100",
-                "page": str(page),
-            })
-            _raise_if_html_api_error(resp.text, f"law history query={law_name!r}")
-
-            # Parse table rows: each row has MST in link + td columns
-            # Columns: 순번 | 법령명 | 소관부처 | 제개정구분 | 법종구분 | 공포번호 | 공포일자 | 시행일자 | 현행연혁
-            rows = re.findall(r"<tr[^>]*>(.*?)</tr>", resp.text, re.DOTALL)
-            for row in rows:
-                mst_match = re.search(r"MST=(\d+)", row)
-                if not mst_match:
-                    continue
-                tds = re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)
-                if len(tds) < 8:
-                    continue
-                clean = [unescape(re.sub(r"<[^>]+>", "", td)).strip() for td in tds]
-                # clean: [순번, 법령명, 소관부처, 제개정구분, 법종구분, 공포번호, 공포일자, 시행일자, 현행연혁]
-                name = clean[1]
-                candidate_names.add(name)
-                if normalize_history_law_name(name) != normalized_law_name:
-                    continue
-                prom_date = _parse_dot_date(clean[6])
-                enf_date = _parse_dot_date(clean[7])
-                all_entries.append({
-                    "법령일련번호": mst_match.group(1),
-                    "법령명한글": name,
-                    "제개정구분명": clean[3],
-                    "법령구분": clean[4],
-                    "공포번호": clean[5].replace("제 ", "").replace("호", "").strip(),
-                    "공포일자": prom_date,
-                    "시행일자": enf_date,
-                })
-
-            if len(rows) < 10:
+        for query in _history_query_candidates(law_name):
+            entries, names = _fetch_history_query(query, normalized_law_name)
+            candidate_names.update(names)
+            if entries:
+                all_entries = entries
+                if query != law_name:
+                    logger.info("History fallback query recovered %s via %s", law_name, query)
                 break
-            page += 1
 
         if all_entries or attempt == _EMPTY_HISTORY_RETRIES:
             break
@@ -398,7 +451,21 @@ def get_law_history(law_name: str, refresh: bool = False) -> list[dict]:
         )
         time.sleep(delay)
 
-    # Sort oldest first
-    all_entries.sort(key=lambda x: x["공포일자"])
+    cached_entries = cached or []
+    fetched_msts = {entry["법령일련번호"] for entry in all_entries}
+    preserved_msts = {
+        entry["법령일련번호"]
+        for entry in cached_entries
+        if entry.get("법령일련번호")
+        and entry["법령일련번호"] not in fetched_msts
+    }
+    all_entries = _merge_history_entries(cached_entries, all_entries)
+    if refresh and preserved_msts:
+        logger.warning(
+            "History refresh for %s omitted %s cached MSTs; preserving sample=%s",
+            law_name,
+            len(preserved_msts),
+            sorted(preserved_msts)[:5],
+        )
     cache.put_history(law_name, all_entries)
     return all_entries

@@ -245,3 +245,49 @@ def test_audit_history_vs_git_reports_commit_metadata_mismatch(tmp_path: Path):
     assert failure_reasons(report, fail_on_commit_metadata_mismatch=True) == [
         "commit_metadata_mismatches=6"
     ]
+
+
+def test_audit_history_vs_git_normalizes_middle_dot_variants(tmp_path: Path):
+    cache_dir = tmp_path / ".cache"
+    repo_dir = tmp_path / "legalize-kr"
+    _init_repo(repo_dir)
+    _commit_mst(
+        repo_dir,
+        "600",
+        subject="법률: 시설의 설치ㆍ이용에 관한 법률 (일부개정)",
+        commit_date="2026-06-01",
+        promulgation_date="2026-06-01",
+        promulgation_number="600",
+    )
+    _write_history(
+        cache_dir,
+        "시설의 설치ㆍ이용에 관한 법률",
+        [
+            {
+                "법령일련번호": "600",
+                "법령명한글": "시설의 설치ㆍ이용에 관한 법률",
+                "제개정구분명": "일부개정",
+                "법령구분": "법률",
+                "공포일자": "20260601",
+                "공포번호": "600",
+            },
+        ],
+    )
+    _write_detail(
+        cache_dir,
+        "600",
+        name="시설의 설치·이용에 관한 법률",
+        law_id="000600",
+        prom_date="20260601",
+        prom_num="600",
+        amendment="일부개정",
+    )
+
+    report = audit(
+        cache_dir=cache_dir,
+        repo_dir=repo_dir,
+        check_commit_metadata=True,
+        today=date(2026, 6, 23),
+    )
+
+    assert report.commit_metadata_mismatches == []

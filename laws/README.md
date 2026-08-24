@@ -56,6 +56,11 @@ python -m laws.fetch_cache --limit 10
 python -m laws.fetch_cache --skip-history
 ```
 
+`--refresh-history`는 새 응답을 MST 기준으로 기존 캐시와 병합하므로, 상류가
+일시적으로 생략한 기존 이력을 삭제하지 않습니다. 전체 법령명 조회가 비면
+표기 정규화 또는 짧은 식별 질의로 재조회하되, 결과 행은 원래 전체 법령명과
+일치하는 경우만 저장합니다.
+
 ### 캐시에서 import (오프라인)
 
 ```bash

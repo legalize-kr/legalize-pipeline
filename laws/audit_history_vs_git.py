@@ -14,6 +14,7 @@ from typing import Any
 
 from . import cache
 from .config import LAW_REPO
+from .converter import normalize_law_name
 
 DEFAULT_RECENT_DAYS = 365
 MST_RE = re.compile(r"법령MST:\s*(\d+)")
@@ -227,7 +228,7 @@ def _expected_git_date(promulgation_date: str) -> str:
 
 
 def _normalize_law_name(value: str) -> str:
-    return re.sub(r"\s+", "", value.strip())
+    return re.sub(r"\s+", "", normalize_law_name(value.strip()))
 
 
 def _normalize_promulgation_number(value: str) -> str:
