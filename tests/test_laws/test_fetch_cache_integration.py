@@ -8,6 +8,7 @@ stage rewrites the cache and passes the post-fetch invariant.
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import call, patch
 
 import pytest
@@ -116,6 +117,73 @@ def test_load_all_cached_history_msts_includes_repealed_law_entries():
     )
 
     assert fetch_cache._load_all_cached_history_msts() == {"100", "101", "200"}
+
+
+def test_recover_repo_history_msts_fetches_only_missing_commit_names(
+    tmp_path: Path,
+    monkeypatch,
+):
+    law_cache.put_history(
+        "현행법",
+        [{"법령일련번호": "200", "법령명한글": "현행법"}],
+    )
+    records = {
+        "100": SimpleNamespace(law_name="폐지법"),
+        "101": SimpleNamespace(law_name="폐지법"),
+        "200": SimpleNamespace(law_name="현행법"),
+    }
+    monkeypatch.setattr(
+        fetch_cache.audit_history_vs_git,
+        "_git_commit_records",
+        lambda repo_dir: records,
+    )
+    fetched_names: list[str] = []
+
+    def fake_fetch(name, counter, all_msts, msts_lock, refresh=False):
+        fetched_names.append(name)
+        entries = [
+            {"법령일련번호": "100", "법령명한글": name},
+            {"법령일련번호": "101", "법령명한글": name},
+        ]
+        law_cache.put_history(name, entries)
+        all_msts.extend(["100", "101"])
+        counter.inc("fetched")
+
+    monkeypatch.setattr(fetch_cache, "_fetch_history_task", fake_fetch)
+
+    repo_msts = fetch_cache._recover_repo_history_msts(
+        tmp_path,
+        refresh=True,
+        workers=1,
+    )
+
+    assert repo_msts == {"100", "101", "200"}
+    assert fetched_names == ["폐지법"]
+
+
+def test_recover_repo_history_msts_fails_when_upstream_still_omits_mst(
+    tmp_path: Path,
+    monkeypatch,
+):
+    records = {"100": SimpleNamespace(law_name="누락법")}
+    monkeypatch.setattr(
+        fetch_cache.audit_history_vs_git,
+        "_git_commit_records",
+        lambda repo_dir: records,
+    )
+
+    def fake_fetch(name, counter, all_msts, msts_lock, refresh=False):
+        law_cache.put_history(name, [])
+        counter.inc("fetched")
+
+    monkeypatch.setattr(fetch_cache, "_fetch_history_task", fake_fetch)
+
+    with pytest.raises(SystemExit, match="remaining_msts=1"):
+        fetch_cache._recover_repo_history_msts(
+            tmp_path,
+            refresh=True,
+            workers=1,
+        )
 
 
 def test_main_exits_when_skip_history_detail_fetch_has_errors(monkeypatch):
