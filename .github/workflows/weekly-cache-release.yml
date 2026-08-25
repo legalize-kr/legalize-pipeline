@@ -90,7 +90,15 @@ jobs:
       - name: Build archive with split
         run: |
           cd "$WORKSPACE_ROOT"
-          tar --use-compress-program="zstd -22 --long=27 -T0" -cf - -C .cache detail history precedent images admrule ordinance \
+          for cache_root in detail history precedent admrule ordinance; do
+            if [ ! -d ".cache/$cache_root" ]; then
+              echo "::error::Required cache root is missing: $cache_root"
+              exit 1
+            fi
+          done
+          mkdir -p .cache/images
+          set -o pipefail
+          tar --use-compress-program="zstd -19 --long=27 -T0" -cf - -C .cache detail history precedent images admrule ordinance \
             | split -b 1900M -d -a 3 - "$GITHUB_WORKSPACE/staging/${TAG}.tar.zst.part"
 
       - name: Generate manifest
@@ -119,8 +127,11 @@ jobs:
           parts=("$GITHUB_WORKSPACE/staging/${TAG}.tar.zst.part"*)
           if [ "${#parts[@]}" -ge 2 ]; then
             mkdir -p /tmp/roundtrip && cd /tmp/roundtrip
-            cat "$GITHUB_WORKSPACE/staging/${TAG}.tar.zst.part000" "$GITHUB_WORKSPACE/staging/${TAG}.tar.zst.part001" \
-              | zstd -d --long=27 -T0 2>/dev/null | tar -tf - | head -50 > listing.txt || true
+            set -o pipefail
+            cat "${parts[@]}" \
+              | zstd -d --long=27 -T0 2>/dev/null \
+              | tar -tf - \
+              | sed -n '1,50p' > listing.txt
             [ -s listing.txt ] || { echo "::error::round-trip extraction produced empty listing"; exit 1; }
             echo "Round-trip OK: $(wc -l < listing.txt) entries listed"
           else

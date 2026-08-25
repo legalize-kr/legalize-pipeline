@@ -71,6 +71,13 @@ def test_weekly_cache_release_includes_nested_ordinance_history():
 
     yaml.compose(text)
     assert "-C .cache detail history precedent images admrule ordinance" in text
+    assert 'for cache_root in detail history precedent admrule ordinance; do' in text
+    assert 'mkdir -p .cache/images' in text
+    assert "set -o pipefail" in text
+    assert 'cat "${parts[@]}"' in text
+    assert "sed -n '1,50p' > listing.txt" in text
+    assert 'tar.zst.part000" "$GITHUB_WORKSPACE/staging/${TAG}.tar.zst.part001' not in text
+    assert "head -50 > listing.txt || true" not in text
 
 
 def test_daily_laws_update_has_time_for_existing_backfill_and_audits():
