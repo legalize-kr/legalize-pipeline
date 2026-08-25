@@ -85,7 +85,7 @@ jobs:
         working-directory: ${{ env.PIPELINE_REPO }}
         run: |
           . "$WORKSPACE_ROOT/.venv/bin/activate"
-          python -m laws.audit_history_vs_git --fail-on-any-valid-missing --recent-days 365
+          python -m laws.audit_history_vs_git --fail-on-any-valid-missing --fail-on-git-msts-missing-from-history --recent-days 365
 
       - name: Report import failures
         working-directory: ${{ env.PIPELINE_REPO }}

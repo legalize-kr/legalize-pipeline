@@ -168,6 +168,7 @@ def test_audit_history_vs_git_classifies_recent_and_long_term_missing(tmp_path: 
     assert report.history_names == 1
     assert report.historical_msts == 4
     assert report.git_msts == 1
+    assert report.git_msts_missing_from_history == []
     assert [record.mst for record in report.missing_in_git_with_valid_detail] == [
         "200",
         "300",
@@ -186,6 +187,30 @@ def test_audit_history_vs_git_classifies_recent_and_long_term_missing(tmp_path: 
     assert failure_reasons(report, fail_on_any_valid_missing=True) == [
         "missing_in_git_with_valid_detail=2"
     ]
+
+
+def test_audit_history_vs_git_reports_git_mst_missing_from_history(tmp_path: Path):
+    cache_dir = tmp_path / ".cache"
+    repo_dir = tmp_path / "legalize-kr"
+    _init_repo(repo_dir)
+    _commit_mst(
+        repo_dir,
+        "500",
+        subject="법률: 이력캐시누락법 (일부개정)",
+        commit_date="2026-06-05",
+        promulgation_date="2026-06-05",
+        promulgation_number="500",
+    )
+
+    report = audit(cache_dir=cache_dir, repo_dir=repo_dir)
+
+    assert [record.mst for record in report.git_msts_missing_from_history] == [
+        "500"
+    ]
+    assert failure_reasons(
+        report,
+        fail_on_git_msts_missing_from_history=True,
+    ) == ["git_msts_missing_from_history=1"]
 
 
 def test_audit_history_vs_git_reports_commit_metadata_mismatch(tmp_path: Path):

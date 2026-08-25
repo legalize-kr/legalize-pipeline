@@ -91,3 +91,4 @@ def test_daily_laws_update_has_time_for_existing_backfill_and_audits():
     history_audit = text.index("python -m laws.audit_history_vs_git")
     push = text.index("git push")
     assert update < validate < cache_audit < history_audit < push
+    assert "--fail-on-git-msts-missing-from-history" in text
