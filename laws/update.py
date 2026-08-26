@@ -358,7 +358,15 @@ def update(
         added = 0
         backfilled = 0
         history_errors = 0
-        for name in sorted(unique_names):
+        history_names = sorted(unique_names)
+        for index, name in enumerate(history_names, 1):
+            if index == 1 or index % 5 == 0:
+                logger.info(
+                    "lsHistory augmentation progress: %s/%s laws (errors=%s)",
+                    index,
+                    len(history_names),
+                    history_errors,
+                )
             try:
                 history = get_law_history(name, refresh=True)
             except Exception as e:

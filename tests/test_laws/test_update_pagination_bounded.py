@@ -128,3 +128,19 @@ def test_m_empty_first_page_exits_normally():
     # Should complete without raising; returns 0 committed (dry_run)
     result = _run_update(search)
     assert result == 0
+
+
+def test_history_augmentation_logs_periodic_progress(caplog):
+    laws = [
+        {"법령일련번호": str(i), "법령명한글": f"법{i}", "공포일자": "20240101"}
+        for i in range(10)
+    ]
+    search = _stub_search({1: {"laws": laws, "totalCnt": len(laws)}})
+
+    with caplog.at_level("INFO", logger="laws.update"):
+        _run_update(search)
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "lsHistory augmentation progress: 1/10 laws (errors=0)" in messages
+    assert "lsHistory augmentation progress: 5/10 laws (errors=0)" in messages
+    assert "lsHistory augmentation progress: 10/10 laws (errors=0)" in messages
