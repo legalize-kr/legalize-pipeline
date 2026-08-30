@@ -30,7 +30,7 @@ from .converter import (
     plan_current_law_paths,
     reset_path_registry,
 )
-from .git_engine import commit_law, head_law_version
+from .git_engine import commit_law, commit_law_changes, head_law_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,7 @@ class VersionTracker:
         # file_path -> (공포일자, 공포번호, MST)
         self.newest: dict[str, tuple[str, str, str]] = {}
         self.current: dict[str, tuple[str, str, str]] = {}
+        self.content: dict[str, str] = {}
 
     @staticmethod
     def _order(version: tuple[str, str, str]) -> tuple[str, int, int]:
@@ -75,10 +76,12 @@ class VersionTracker:
         """Seed a file's baseline from HEAD the first time it is touched."""
         if file_path in self.newest:
             return
-        head = head_law_version(file_path)
-        if head:
+        snapshot = head_law_snapshot(file_path)
+        if snapshot:
+            head, content = snapshot
             self.newest[file_path] = head
             self.current[file_path] = head
+            self.content[file_path] = content
 
     def committed(self, file_path: str, meta: dict, mst: str) -> None:
         version = (
@@ -88,8 +91,11 @@ class VersionTracker:
         )
         self.current[file_path] = version
         known = self.newest.get(file_path)
-        if known is None or self._order(version) > self._order(known):
+        if known is None or self._order(version) >= self._order(known):
             self.newest[file_path] = version
+            content_path = KR_DIR.parent / file_path
+            if content_path.exists():
+                self.content[file_path] = content_path.read_text(encoding="utf-8")
 
     def regressed(self) -> list[tuple[str, str, str]]:
         """(file_path, newest_mst, held_공포일자) for files left behind."""
@@ -101,19 +107,18 @@ class VersionTracker:
         return out
 
     def restore(self) -> int:
-        """Re-commit the newest version wherever HEAD regressed."""
+        """Restore the exact newest HEAD snapshot wherever a backfill regressed it."""
         restored = 0
         for path, mst, held in self.regressed():
             logger.warning("HEAD regressed for %s (holds %s) — restoring MST=%s", path, held, mst)
             try:
-                detail = get_law_detail(mst)
-                meta = detail["metadata"]
-                (KR_DIR.parent / path).write_text(law_to_markdown(detail), encoding="utf-8")
-                msg = build_commit_msg(
-                    meta.get("법령명한글", ""), meta.get("법령구분", ""), mst, meta
-                )
-                prom = format_date(meta.get("공포일자", "")) or "2000-01-01"
-                if commit_law(path, msg, prom, mst, skip_dedup=True):
+                (KR_DIR.parent / path).write_text(self.content[path], encoding="utf-8")
+                prom = format_date(self.newest[path][0]) or "2000-01-01"
+                if commit_law_changes(
+                    [path],
+                    "chore(laws): 과거 이력 백필 후 최신 상태 복원",
+                    prom,
+                ):
                     restored += 1
                     logger.info("  Restored MST=%s %s %s", mst, prom, path)
             except Exception as e:

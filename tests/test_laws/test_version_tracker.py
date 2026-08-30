@@ -12,6 +12,7 @@ import subprocess
 import pytest
 
 from laws import git_engine
+from laws import import_laws
 from laws.import_laws import VersionTracker
 
 
@@ -168,3 +169,34 @@ def test_missing_promulgation_date_sorts_lowest(law_repo):
     tracker.committed("kr/민법/법률.md", {"공포일자": "", "공포번호": ""}, "1")
 
     assert [p for p, _, _ in tracker.regressed()] == ["kr/민법/법률.md"]
+
+
+def test_csv_backfill_restores_head_snapshot_without_detail_fetch(law_repo, monkeypatch, tmp_path):
+    """CSV fallback must restore HEAD without assuming a detail XML or API key exists."""
+    _commit_version(law_repo, "kr/민법/법률.md", "300", "2024-01-15", "00031")
+    monkeypatch.setattr(import_laws, "KR_DIR", law_repo / "kr")
+    monkeypatch.setattr(import_laws, "get_processed_msts", lambda: set())
+    monkeypatch.setattr(import_laws, "mark_processed", lambda _mst: None)
+    monkeypatch.setattr(import_laws, "parse_csv", lambda _path: [{
+        "법령MST": "100",
+        "소관부처명": "법무부",
+        "법령ID": "000001",
+        "법령명": "민법",
+        "공포일자": "19900101",
+        "공포번호": "1",
+        "시행일자": "19900101",
+        "법령구분코드": "A",
+        "법령구분명": "법률",
+        "법령분야명": "민사",
+    }])
+    monkeypatch.setattr(
+        import_laws,
+        "get_law_detail",
+        lambda _mst: pytest.fail("CSV 복원은 상세 조회를 호출하면 안 된다"),
+    )
+
+    import_laws.import_from_csv(tmp_path / "fallback.csv")
+
+    assert "법령MST: 300" in subprocess.check_output(
+        ["git", "show", "HEAD:kr/민법/법률.md"], cwd=law_repo, text=True
+    )
