@@ -1,4 +1,5 @@
 import re
+import subprocess
 from pathlib import Path
 
 from core.git_engine import _run_git as _core_run_git
@@ -22,8 +23,8 @@ def _frontmatter_value(blob: str, key: str) -> str | None:
     return next((g for g in match.groups() if g is not None), "")
 
 
-def head_law_version(file_path: str) -> tuple[str, str, str] | None:
-    """(공포일자, 공포번호, 법령MST) of ``file_path`` at HEAD, or None.
+def head_law_snapshot(file_path: str) -> tuple[tuple[str, str, str], str] | None:
+    """Return HEAD's version tuple and exact Markdown for ``file_path``.
 
     공포일자 comes back without separators (YYYYMMDD) so it orders directly
     against the raw API value. 공포번호 is the tie-breaker for same-day
@@ -34,19 +35,33 @@ def head_law_version(file_path: str) -> tuple[str, str, str] | None:
     ones, and a stray quote sorts below every digit — which would silently
     park the HEAD baseline at the bottom and defeat the regression guard.
     """
-    try:
-        blob = _run_git("show", f"HEAD:{file_path}")
-    except RuntimeError:
+    result = subprocess.run(
+        ["git", "show", f"HEAD:{file_path}"],
+        cwd=LAW_REPO,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
         return None
+    blob = result.stdout
     prom = _frontmatter_value(blob, "공포일자")
     mst = _frontmatter_value(blob, "법령MST")
     if prom is None or mst is None:
         return None
     return (
-        prom.replace("-", ""),
-        _frontmatter_value(blob, "공포번호") or "",
-        mst,
+        (
+            prom.replace("-", ""),
+            _frontmatter_value(blob, "공포번호") or "",
+            mst,
+        ),
+        blob,
     )
+
+
+def head_law_version(file_path: str) -> tuple[str, str, str] | None:
+    """(공포일자, 공포번호, 법령MST) of ``file_path`` at HEAD, or None."""
+    snapshot = head_law_snapshot(file_path)
+    return snapshot[0] if snapshot else None
 
 
 def commit_law(
