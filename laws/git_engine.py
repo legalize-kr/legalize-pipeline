@@ -35,12 +35,16 @@ def head_law_snapshot(file_path: str) -> tuple[tuple[str, str, str], str] | None
     ones, and a stray quote sorts below every digit — which would silently
     park the HEAD baseline at the bottom and defeat the regression guard.
     """
-    result = subprocess.run(
-        ["git", "show", f"HEAD:{file_path}"],
-        cwd=LAW_REPO,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "show", f"HEAD:{file_path}"],
+            cwd=LAW_REPO,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        # Tests and first-run imports may not have a materialized law repo yet.
+        return None
     if result.returncode != 0:
         return None
     blob = result.stdout
