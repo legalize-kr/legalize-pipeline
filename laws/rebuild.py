@@ -134,7 +134,13 @@ def load_and_sort_entries() -> list[tuple[str, dict]]:
 
 
 def rebuild_law_commits(entries: list[tuple[str, dict]], dry_run: bool = False) -> int:
-    """Create one commit per law entry, oldest first."""
+    """Create one commit per law entry, oldest first.
+
+    Needs no VersionTracker (unlike update/import_from_cache): this replays
+    every cached version onto an orphan branch in canonical ascending order
+    with no dedup skip, so each file's newest version is always committed
+    last and HEAD cannot regress. Keep those two properties if editing.
+    """
     planned_paths = plan_current_law_paths(entries)
     committed = 0
     errors = 0
