@@ -1,7 +1,8 @@
-"""File-based cache for raw law detail API responses and amendment history.
+"""Store law detail parser input and amendment history.
 
-Caches detail (lawService.do) responses in .cache/detail/{MST}.xml and
-amendment history (lsHistory) in .cache/history/{law_name}.json.
+The detail API client validates XML before publication and can store repaired bytes.
+Detail files use .cache/detail/{MST}.xml. History uses .cache/history/{law_name}.json.
+The cache does not archive API originals or validate historical files on read.
 """
 
 import hashlib

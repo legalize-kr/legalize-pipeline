@@ -1,4 +1,7 @@
-"""Fetch and cache all raw law detail API responses and amendment histories.
+"""Fetch law detail parser input and amendment histories.
+
+New detail files contain validated XML and can include supported repairs.
+Existing cache entries bypass validation in this collector.
 
 Fetches the current law list via search API, then for each unique law name
 fetches the full amendment history (caching it), collects all historical MSTs,
