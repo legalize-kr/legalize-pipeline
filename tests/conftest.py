@@ -51,15 +51,46 @@ def _guard_against_shared_cache_pollution():
     / `foo법` invariant violation. This fixture snapshots the cache dirs at
     session start and diffs at teardown.
     """
+    import core.quota_budget as quota_budget
+
+    import admrules.cache as adm_cache
+    import admrules.checkpoint as adm_checkpoint
     import laws.cache as law_cache
+    import laws.failures as law_failures
+    import ordinances.cache as ord_cache
+    import ordinances.checkpoint as ord_checkpoint
     import precedents.cache as prec_cache
 
     guarded: list[tuple[str, Path]] = [
         ("laws.cache.CACHE_DIR/history", law_cache.CACHE_DIR / "history"),
         ("laws.cache.CACHE_DIR/detail", law_cache.CACHE_DIR / "detail"),
         ("precedents.cache.PREC_CACHE_DIR", prec_cache.PREC_CACHE_DIR),
+        ("admrules.cache.CACHE_DIR", adm_cache.CACHE_DIR),
+        ("ordinances.cache.CACHE_DIR", ord_cache.CACHE_DIR),
     ]
+    # Checkpoints are single files rather than directories, and are the kind of
+    # shared state that silently leaks between tests: a test that skips
+    # isolating them reads (or overwrites) the developer's live crawl state.
+    guarded_files: list[tuple[str, Path]] = [
+        ("admrules.checkpoint.CHECKPOINT_FILE", adm_checkpoint.CHECKPOINT_FILE),
+        ("ordinances.checkpoint.CHECKPOINT_FILE", ord_checkpoint.CHECKPOINT_FILE),
+        # 테스트가 실제 쿼터 원장에 허위 소비를 기록하면 그날의 수집이
+        # 가드레일에 막힐 수 있다.
+        ("core.quota_budget.STATE_FILE", quota_budget.STATE_FILE),
+        # 실패 원장은 CI 델타 게이트의 입력이다. 테스트가 남긴 항목은
+        # 다음 수집에서 신규 실패로 오보된다.
+        ("laws.failures.FAILED_FILE", law_failures.FAILED_FILE),
+    ]
+
+    def _snapshot_file(path: Path) -> tuple[int, int] | None:
+        try:
+            st = path.stat()
+        except OSError:
+            return None
+        return (st.st_size, st.st_mtime_ns)
+
     snapshots = [(label, d, _snapshot_dir(d)) for label, d in guarded]
+    file_snapshots = [(label, p, _snapshot_file(p)) for label, p in guarded_files]
 
     yield
 
@@ -74,6 +105,9 @@ def _guard_against_shared_cache_pollution():
                 f"{label} ({directory}): added={len(added)} changed={len(changed)}; "
                 f"examples={preview}"
             )
+    for label, path, before in file_snapshots:
+        if _snapshot_file(path) != before:
+            violations.append(f"{label} ({path}): mutated")
 
     if violations:
         raise AssertionError(
@@ -81,6 +115,22 @@ def _guard_against_shared_cache_pollution():
             "cache-writing code paths must monkeypatch the relevant CACHE_DIR "
             "to a tmp_path. Details:\n  - " + "\n  - ".join(violations)
         )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_shared_ledgers(tmp_path, monkeypatch):
+    """Keep the shared ledgers out of every test's reach.
+
+    Both are reached indirectly from many code paths, so relying on each test to
+    stub them lets one omission corrupt developer state: a phantom day's
+    consumption blocks that day's fetch on the headroom guardrail, and a stray
+    failure entry is reported as a new regression by the CI delta gate.
+    """
+    import core.quota_budget as quota_budget
+    import laws.failures as law_failures
+
+    monkeypatch.setattr(quota_budget, "STATE_FILE", tmp_path / "quota.json")
+    monkeypatch.setattr(law_failures, "FAILED_FILE", tmp_path / "failed_msts.json")
 
 
 @pytest.fixture

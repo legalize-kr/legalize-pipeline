@@ -31,7 +31,8 @@ def today_key() -> str:
     return datetime.now().strftime("%Y-%m-%d")
 
 
-def load(path: Path = STATE_FILE) -> dict:
+def load(path: Path | None = None) -> dict:
+    path = path or STATE_FILE
     if not path.exists():
         return {}
     try:
@@ -40,7 +41,8 @@ def load(path: Path = STATE_FILE) -> dict:
         return {}
 
 
-def record_requests(count: int, *, corpus: str, path: Path = STATE_FILE) -> None:
+def record_requests(count: int, *, corpus: str, path: Path | None = None) -> None:
+    path = path or STATE_FILE
     data = load(path)
     day = today_key()
     data.setdefault(day, {})
@@ -49,7 +51,7 @@ def record_requests(count: int, *, corpus: str, path: Path = STATE_FILE) -> None
     atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
 
 
-def used_today(path: Path = STATE_FILE) -> int:
+def used_today(path: Path | None = None) -> int:
     return sum(int(value) for value in load(path).get(today_key(), {}).values())
 
 
@@ -58,7 +60,7 @@ def ensure_headroom(
     expected_requests: int,
     corpus: str,
     daily_budget: float = DEFAULT_DAILY_BUDGET,
-    path: Path = STATE_FILE,
+    path: Path | None = None,
     min_headroom_ratio: float = 0.30,
 ) -> None:
     if math.isinf(daily_budget):
