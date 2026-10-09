@@ -69,7 +69,7 @@ _STALE_DEPARTMENT_ROOTS = {
 
 
 class _QuotedStr(str):
-    """str subclass that forces single-quoted YAML output."""
+    """str subclass that forces quoted YAML output."""
 
 
 class _AdmruleDumper(yaml.Dumper):
@@ -79,7 +79,8 @@ class _AdmruleDumper(yaml.Dumper):
 _AdmruleDumper.add_representer(
     _QuotedStr,
     lambda dumper, value: dumper.represent_scalar(
-        "tag:yaml.org,2002:str", value, style="'"
+        "tag:yaml.org,2002:str", value,
+        style='"' if any(ord(c) < 32 or 127 <= ord(c) <= 159 or c in "\u2028\u2029\ufeff\ufffe\uffff" for c in value) else "'",
     ),
 )
 
@@ -317,7 +318,10 @@ def admrule_identity(metadata: dict) -> str:
 
 def is_repeal_revision(metadata: dict) -> bool:
     """Return whether this revision repeals the administrative rule."""
-    return "폐지" in str(metadata.get("제개정구분", ""))
+    code = str(metadata.get("제개정구분코드", "")).strip()
+    if code:
+        return code in {"200404", "200410"}
+    return str(metadata.get("제개정구분", "")).strip() in {"폐지", "타법폐지"}
 
 
 def reset_path_registry() -> None:
@@ -600,5 +604,6 @@ def xml_to_markdown(raw_xml: bytes | str, attachment_metadata: list[dict] | None
         allow_unicode=True,
         sort_keys=False,
         default_flow_style=False,
+        width=float("inf"),
     ).strip()
     return f"---\n{yaml_text}\n---\n\n{body.strip()}\n"

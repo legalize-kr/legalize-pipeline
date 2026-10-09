@@ -43,14 +43,14 @@ def file_is_tracked(repo_dir: Path, file_path: Path) -> bool:
 
 
 def commit_exists(repo_dir: Path, grep_key: str) -> bool:
-    """Check if a commit containing an exact grep_key line already exists."""
+    """Check for an exact grep_key line in the current branch history."""
     try:
         pattern = f"^{re.escape(grep_key)}$"
         return bool(
             _run_git(
                 "log",
                 "--oneline",
-                "--all",
+                "HEAD",
                 "--extended-regexp",
                 f"--grep={pattern}",
                 cwd=repo_dir,

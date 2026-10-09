@@ -78,6 +78,11 @@ def search_admrules(
     root = ElementTree.fromstring(resp.content)
     _require_no_api_error(root, f"admrul search page {page}")
 
+    if root.tag != "AdmRulSearch" or root.findtext("totalCnt") is None:
+        raise RuntimeError(f"Unexpected admrule search response: {root.tag}")
+    if int(root.findtext("page", "0")) != page:
+        raise RuntimeError(f"Unexpected admrule search page: requested={page}")
+
     admrules = []
     for item in root.findall(".//admrul"):
         admrules.append({
@@ -103,11 +108,11 @@ def search_admrules(
     }
 
 
-def get_admrule_detail(serial_no: str | int) -> bytes:
+def get_admrule_detail(serial_no: str | int, *, refresh: bool = False) -> bytes:
     """Fetch raw administrative rule detail XML by 행정규칙일련번호."""
     serial_no = str(serial_no)
     cached = cache.get_detail(serial_no)
-    if cached:
+    if cached and not refresh:
         logger.debug("Cache hit: admrule detail serial_no=%s", serial_no)
         return cached
 
@@ -118,8 +123,11 @@ def get_admrule_detail(serial_no: str | int) -> bytes:
     })
     raw = resp.content
     root = ElementTree.fromstring(raw)
-    _require_admrule_detail_root(root, serial_no)
     _require_no_api_error(root, f"admrul detail ID={serial_no}")
+    _require_admrule_detail_root(root, serial_no)
+    returned_serial = root.findtext(".//행정규칙일련번호") or root.findtext(".//ID")
+    if returned_serial != serial_no:
+        raise RuntimeError(f"admrule detail serial mismatch: requested={serial_no} returned={returned_serial}")
     cache.put_detail(serial_no, raw)
     return raw
 

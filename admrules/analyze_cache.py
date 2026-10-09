@@ -20,7 +20,9 @@ def analyze(cache_dir: Path = CACHE_DIR) -> dict:
     body_sources: Counter[str] = Counter()
     date_errors = 0
     total = 0
-    for path in sorted(cache_dir.glob("*.xml")):
+    files = {path.name: path for directory in (cache_dir / "retired", cache_dir)
+             for path in directory.glob("*.xml")}
+    for path in sorted(files.values()):
         root = ElementTree.fromstring(path.read_bytes())
         total += 1
         counts_by_type[_text(root, "행정규칙종류") or _text(root, "행정규칙종류명") or ""] += 1

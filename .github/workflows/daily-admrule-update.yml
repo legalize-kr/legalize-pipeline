@@ -66,7 +66,7 @@ jobs:
           git config user.name "legalize-kr-bot"
           git config user.email "bot@legalize.kr"
 
-      - name: Run administrative rules history-aware update
+      - name: Update history and reconcile the current administrative rules
         working-directory: ${{ env.PIPELINE_REPO }}
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
@@ -79,11 +79,17 @@ jobs:
             python -m admrules.update --repo "$ADMRULE_KR_REPO" --days 14 --commit
           fi
 
-      - name: Validate
+      - name: Validate files and current source coverage
         working-directory: ${{ env.PIPELINE_REPO }}
+        env:
+          LIMIT: ${{ inputs.limit }}
         run: |
           . "$WORKSPACE_ROOT/.venv/bin/activate"
-          python -m admrules.validate "$ADMRULE_KR_REPO"
+          if [ -n "$LIMIT" ]; then
+            python -m admrules.validate "$ADMRULE_KR_REPO"
+          else
+            python -m admrules.validate "$ADMRULE_KR_REPO" --snapshot "$LEGALIZE_CACHE_DIR/admrule/current_snapshot.json"
+          fi
 
       - name: Push changes
         working-directory: ${{ env.ADMRULE_KR_REPO }}

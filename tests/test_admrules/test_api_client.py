@@ -10,7 +10,7 @@ class Response:
 
 def test_search_admrules_parses_list(monkeypatch):
     xml = """
-    <LawSearch>
+    <AdmRulSearch>
       <totalCnt>1</totalCnt>
       <page>1</page>
       <admrul>
@@ -20,7 +20,7 @@ def test_search_admrules_parses_list(monkeypatch):
         <발령일자>20240504</발령일자>
         <소관부처명>행정안전부</소관부처명>
       </admrul>
-    </LawSearch>
+    </AdmRulSearch>
     """
 
     def fake_request(url, params):
@@ -38,7 +38,7 @@ def test_search_admrules_parses_list(monkeypatch):
 def test_search_admrules_sends_date_range(monkeypatch):
     def fake_request(url, params):
         assert params["prmlYd"] == "20260501~20260511"
-        return Response(b"<LawSearch><totalCnt>0</totalCnt><page>1</page></LawSearch>")
+        return Response(b"<AdmRulSearch><totalCnt>0</totalCnt><page>1</page></AdmRulSearch>")
 
     monkeypatch.setattr(api_client, "_request", fake_request)
     api_client.search_admrules(date_range="20260501~20260511")
@@ -47,7 +47,7 @@ def test_search_admrules_sends_date_range(monkeypatch):
 def test_search_admrules_history_uses_nw_2(monkeypatch):
     def fake_request(url, params):
         assert params["nw"] == "2"
-        return Response(b"<LawSearch><totalCnt>0</totalCnt><page>1</page></LawSearch>")
+        return Response(b"<AdmRulSearch><totalCnt>0</totalCnt><page>1</page></AdmRulSearch>")
 
     monkeypatch.setattr(api_client, "_request", fake_request)
     api_client.search_admrules(history=True)
@@ -64,14 +64,14 @@ def test_get_admrule_detail_fetches_and_caches(monkeypatch):
     def fake_request(url, params):
         assert url.endswith("/lawService.do")
         assert params["target"] == "admrul"
-        return Response(b"<AdmRulService />")
+        return Response(b"<AdmRulService><ID>123</ID></AdmRulService>")
 
     monkeypatch.setattr(api_client, "_request", fake_request)
     monkeypatch.setattr(api_client.cache, "get_detail", lambda serial: None)
     monkeypatch.setattr(api_client.cache, "put_detail", lambda serial, raw: calls.append((serial, raw)))
 
-    assert api_client.get_admrule_detail("123") == b"<AdmRulService />"
-    assert calls == [("123", b"<AdmRulService />")]
+    assert api_client.get_admrule_detail("123") == b"<AdmRulService><ID>123</ID></AdmRulService>"
+    assert calls == [("123", b"<AdmRulService><ID>123</ID></AdmRulService>")]
 
 
 def test_get_admrule_detail_rejects_html_error_page(monkeypatch):
@@ -91,7 +91,7 @@ def test_get_admrule_detail_rejects_html_error_page(monkeypatch):
 
 def test_search_admrules_raises_api_error(monkeypatch):
     def fake_request(url, params):
-        return Response("<LawSearch><result>사용자 정보 검증에 실패</result><msg>bad key</msg></LawSearch>".encode())
+        return Response("<AdmRulSearch><result>사용자 정보 검증에 실패</result><msg>bad key</msg></AdmRulSearch>".encode())
 
     monkeypatch.setattr(api_client, "_request", fake_request)
     try:
@@ -100,3 +100,32 @@ def test_search_admrules_raises_api_error(monkeypatch):
         assert "API error" in str(e)
     else:
         raise AssertionError("expected RuntimeError")
+
+
+def test_search_rejects_wrong_root_and_page(monkeypatch):
+    import pytest
+    for content in [b"<html />", b"<AdmRulSearch><totalCnt>1</totalCnt><page>2</page></AdmRulSearch>"]:
+        monkeypatch.setattr(api_client, "_request", lambda *args: Response(content))
+        with pytest.raises(RuntimeError):
+            api_client.search_admrules()
+
+
+def test_refresh_fetches_new_detail_instead_of_stale_status(monkeypatch):
+    monkeypatch.setattr(api_client.cache, "get_detail", lambda serial: b"<cached />")
+    monkeypatch.setattr(api_client, "_request", lambda *args: Response(b"<AdmRulService><ID>123</ID></AdmRulService>"))
+    stored = []
+    monkeypatch.setattr(api_client.cache, "put_detail", lambda *args: stored.append(args))
+    assert api_client.get_admrule_detail("123", refresh=True) == b"<AdmRulService><ID>123</ID></AdmRulService>"
+    assert stored == [("123", b"<AdmRulService><ID>123</ID></AdmRulService>")]
+
+
+def test_wrong_serial_response_does_not_overwrite_cached_revision(tmp_path, monkeypatch):
+    import pytest
+    monkeypatch.setattr(api_client.cache, "CACHE_DIR", tmp_path)
+    previous = b'<AdmRulService><ID>123</ID></AdmRulService>'
+    api_client.cache.put_detail("123", previous)
+    for response in [b'<AdmRulService/>', b'<AdmRulService><ID>456</ID></AdmRulService>']:
+        monkeypatch.setattr(api_client, "_request", lambda *args: Response(response))
+        with pytest.raises(RuntimeError, match="detail serial mismatch"):
+            api_client.get_admrule_detail("123", refresh=True)
+        assert api_client.cache.get_detail("123") == previous

@@ -9,13 +9,29 @@ and the Rust `admrule-kr-compiler`.
   `{기관경로...}/{행정규칙종류}/{행정규칙명}/본문.md`.
 - Source collection uses `target=admrul` with `history=True` / `nw=2`, so
   `.cache/admrule/{행정규칙일련번호}.xml` contains history revisions, not only
-  the current list.
+  the current list. Withdrawn XML moves to `admrule/retired/` and remains compiler input.
+  Active XML takes precedence over archived XML with the same serial.
 - A rule's history identity is `행정규칙ID`. If that field is missing, fall
   back to `행정규칙일련번호`.
 - The final `HEAD` represents the current administrative-rule snapshot. A
-  revision whose `제개정구분` contains `폐지` deletes the latest path for that
+  revision with repeal code `200404` or `200410` deletes the latest path for that
   identity instead of writing a replacement Markdown file. The deleted content
-  remains in earlier Git commits.
+  remains in earlier Git commits. `200407` (`폐지제정`) writes the replacement body.
+- Full imports apply `current_snapshot.json` after the publication history.
+  The pipeline selects `nw=1` rows marked `현행`, excluding explicit repeals.
+  It also retains absent candidates after live detail confirmation of `현행여부=Y`.
+  The snapshot records these source discrepancies in `supplemental`.
+  Python and Rust restore the same selected paths and bytes.
+  YAML strings do not wrap at a fixed width. Strings with line breaks or control
+  characters use escaped double quotes, so attachment titles preserve their values.
+  `소관부처명_원문` follows `기관경로` in both implementations.
+  XML text preserves spaces across text, CDATA, and character references.
+  XML 1.0 line endings normalize to LF before rendering.
+  Numeric headings and item markers recognize Unicode decimal digits.
+  This selection overrides cached `현행여부` when choosing the final tree.
+  The raw XML and its rendered metadata remain unchanged.
+  Snapshot corrections use `observed_on` as their commit date.
+  Without this file, legacy cached-status selection remains available for old caches and test fixtures.
 - `기관경로` is based on normalized `상위부처명`, `소관부처명`, and
   `담당부서기관명`, then corrected with legal parent relationships from
   `정부조직법` and agency-specific installation laws. If the resolved agency has

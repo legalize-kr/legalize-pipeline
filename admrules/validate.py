@@ -1,6 +1,8 @@
 """Validate administrative rule Markdown files and invariants."""
 
+import argparse
 import datetime
+import json
 import sys
 import unicodedata
 from pathlib import Path
@@ -140,8 +142,38 @@ def validate_no_binary_files(root: Path) -> list[str]:
     return errors
 
 
+def validate_current_snapshot(root: Path, snapshot_path: Path) -> list[str]:
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    if snapshot.get("schema_version") != 1 or not snapshot.get("rules"):
+        return ["Invalid current admrule snapshot"]
+    actual = {}
+    errors = []
+    for path in root.rglob("본문.md"):
+        fm, _, parse_errors = _frontmatter_and_body(path.read_text(encoding="utf-8"))
+        if parse_errors or not fm:
+            errors.append(f"Cannot read snapshot identity: {path}")
+            continue
+        identity = str(fm.get("행정규칙ID", ""))
+        if identity in actual:
+            errors.append(f"Duplicate current rule identity: {identity}")
+        actual[identity] = str(fm.get("행정규칙일련번호", ""))
+    expected = snapshot["rules"]
+    for label, identities in (
+        ("Missing current rules", expected.keys() - actual.keys()),
+        ("Unexpected current rules", actual.keys() - expected.keys()),
+        ("Incorrect current revisions", {key for key in expected.keys() & actual.keys() if expected[key] != actual[key]}),
+    ):
+        if identities:
+            errors.append(f"{label}: count={len(identities)} sample={sorted(identities)[:10]}")
+    return errors
+
+
 def main() -> None:
-    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
+    parser = argparse.ArgumentParser(description="Validate administrative rule files and current selection")
+    parser.add_argument("root", nargs="?", type=Path, default=Path.cwd())
+    parser.add_argument("--snapshot", type=Path, help="Current snapshot JSON for exact ID and serial comparison")
+    args = parser.parse_args()
+    root = args.root
     errors = validate_no_binary_files(root)
     for md_file in sorted(root.rglob("*.md")):
         rel_parts = md_file.relative_to(root).parts
@@ -149,6 +181,8 @@ def main() -> None:
             continue
         for error in validate_frontmatter(md_file):
             errors.append(f"{md_file}: {error}")
+    if args.snapshot:
+        errors.extend(validate_current_snapshot(root, args.snapshot))
     for error in errors:
         print(error, file=sys.stderr)
     sys.exit(1 if errors else 0)

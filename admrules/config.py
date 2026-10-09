@@ -28,6 +28,9 @@ ADMRULE_TYPES = {
     "8": "국무총리훈령",
 }
 
-VALID_ADMRULE_TYPES = frozenset(ADMRULE_TYPES.values()) | {"규칙"}
+VALID_ADMRULE_TYPES = frozenset(ADMRULE_TYPES.values()) | {
+    "가족관계등록예규", "계약예규", "규격", "규정", "규칙", "내규", "대통령공고",
+    "등기예규", "매뉴얼", "세칙", "재판예규", "행정예규", "회계예규",
+}
 BODY_SOURCES = frozenset({"api-text", "parsed-from-hwp", "parsing-failed"})
 BINARY_SUFFIXES = frozenset({".hwp", ".pdf", ".jpg", ".jpeg", ".png", ".gif"})

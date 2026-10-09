@@ -60,6 +60,6 @@ def test_run_imports_only_uncommitted_current_serials(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(update, "_date_range", lambda days: f"range-{days}")
 
-    update.run(repo=tmp_path, commit=True)
+    update.run(repo=tmp_path, commit=True, knd=["1"])
 
     assert imported == ["2"]

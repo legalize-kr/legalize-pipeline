@@ -18,7 +18,8 @@ def get_detail(serial_no: str) -> bytes | None:
     path = _detail_path(str(serial_no))
     if path.exists():
         return path.read_bytes()
-    return None
+    archived = CACHE_DIR / "retired" / path.name
+    return archived.read_bytes() if archived.exists() else None
 
 
 def put_detail(serial_no: str, content: bytes) -> None:
@@ -30,16 +31,19 @@ def put_detail(serial_no: str, content: bytes) -> None:
 def list_cached_serials() -> list[str]:
     if not CACHE_DIR.exists():
         return []
-    return sorted(p.stem for p in CACHE_DIR.glob("*.xml"))
+    return sorted({p.stem for directory in (CACHE_DIR, CACHE_DIR / "retired") for p in directory.glob("*.xml")})
 
 
 def prune_details(allowed_serials: set[str]) -> list[str]:
-    """Remove cached detail XML files not present in the current full-history search."""
+    """Archive withdrawn XML so a rebuild retains earlier publication history."""
     allowed = {str(serial) for serial in allowed_serials if serial}
     removed: list[str] = []
     for serial in list_cached_serials():
-        if serial in allowed:
+        path = _detail_path(serial)
+        if serial in allowed or not path.exists():
             continue
-        _detail_path(serial).unlink(missing_ok=True)
+        archive = CACHE_DIR / "retired"
+        archive.mkdir(exist_ok=True)
+        path.replace(archive / path.name)
         removed.append(serial)
     return removed

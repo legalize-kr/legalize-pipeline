@@ -11,6 +11,7 @@ from core.github_actions import report_partial_fetch
 from .config import ADMRULE_REPO, CONCURRENT_WORKERS
 from .fetch_cache import fetch_all_current, fetch_details
 from .import_admrules import import_from_cache
+from .snapshot import reconcile_current_snapshot, write_current_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ def _committed_serials(repo: Path) -> set[str]:
     if not (repo / ".git").exists():
         return set()
     result = subprocess.run(
-        ["git", "log", "--all", "--format=%B"],
+        ["git", "log", "HEAD", "--format=%B"],
         cwd=repo,
         capture_output=True,
         text=True,
@@ -64,11 +65,17 @@ def run(
     date_range = _date_range(days)
     logger.info("searching administrative rules in date range %s", date_range)
     entries = fetch_all_current(knd_values=knd, org=org, max_entries=limit, date_range=date_range)
-    current_serials = _current_serials(entries, limit)
+    full_run = limit is None and knd is None and not org
+    current = fetch_all_current(history=False) if full_run else []
+    current_serials = _current_serials(entries + current, limit)
     committed_serials = _committed_serials(repo) if commit else set()
     import_serials = [serial for serial in current_serials if serial not in committed_serials] if commit else current_serials
-    fetch_counter = fetch_details(entries, workers=workers, limit=limit)
+    fetch_counter = fetch_details(entries + current, workers=workers, limit=limit, **({"refresh_current": True} if full_run else {}))
     cached, fetched, fetch_errors = fetch_counter.snapshot()
+    if full_run and fetch_errors:
+        raise RuntimeError(f"Incomplete administrative rule update: {fetch_errors} detail failures")
+    if full_run:
+        write_current_snapshot(current, history_entries=entries)
     import_stats = import_from_cache(
         repo,
         limit=None,
@@ -76,6 +83,8 @@ def run(
         serials=import_serials,
         skip_dedup=commit,
     )
+    if full_run and not import_stats.get("errors"):
+        import_stats.update(reconcile_current_snapshot(repo, commit=commit))
     stats = {
         "cached": cached,
         "fetched": fetched,
@@ -107,6 +116,8 @@ def main() -> None:
         days=args.days,
     )
     report_partial_fetch("Administrative rules", stats)
+    if stats.get("errors"):
+        raise SystemExit("Administrative rule import failed")
 
 
 if __name__ == "__main__":

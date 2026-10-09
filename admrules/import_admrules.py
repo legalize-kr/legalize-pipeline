@@ -242,7 +242,18 @@ def main() -> None:
     parser.add_argument("--commit", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    logger.info("admrule import done: %s", import_from_cache(args.repo, limit=args.limit, commit=args.commit))
+    if args.limit is None:
+        from .snapshot import validate_snapshot_inputs
+
+        validate_snapshot_inputs()
+    stats = import_from_cache(args.repo, limit=args.limit, commit=args.commit)
+    if args.limit is None and not stats["errors"]:
+        from .snapshot import reconcile_current_snapshot
+
+        stats.update(reconcile_current_snapshot(args.repo, commit=args.commit))
+    logger.info("admrule import done: %s", stats)
+    if stats["errors"]:
+        raise SystemExit("Administrative rule import failed")
 
 
 if __name__ == "__main__":

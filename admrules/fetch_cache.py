@@ -3,13 +3,14 @@
 import argparse
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from xml.etree import ElementTree
 
 from core.counter import Counter
 from core.quota_budget import ensure_headroom, record_requests
 
 from . import cache, checkpoint, detail_failure_allowlist
 from .api_client import get_admrule_detail, search_admrules
-from .config import ADMRULE_TYPES, CONCURRENT_WORKERS
+from .config import ADMRULE_TYPES, CONCURRENT_WORKERS, VALID_ADMRULE_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +40,15 @@ def fetch_all_current(
     org: str = "",
     max_entries: int | None = None,
     date_range: str = "",
+    history: bool = True,
 ) -> list[dict]:
     """Fetch administrative-rule history list pages for the selected kinds."""
     entries: list[dict] = []
-    for knd in knd_values or list(ADMRULE_TYPES):
+    seen: set[str] = set()
+    for knd in knd_values or [""]:
         page = 1
+        expected_total = None
+        kind_seen: set[str] = set()
         while True:
             result = search_admrules(
                 page=page,
@@ -51,11 +56,27 @@ def fetch_all_current(
                 knd=knd,
                 org=org,
                 date_range=date_range,
-                history=True,
+                history=history,
             )
             record_requests(1, corpus="admrules")
-            entries.extend(entry for entry in result["admrules"] if _within_date_range(entry, "발령일자", date_range))
             total = result["totalCnt"]
+            if expected_total is None:
+                expected_total = total
+            page_entries = result["admrules"]
+            expected_size = min(100, max(0, total - (page - 1) * 100))
+            if total != expected_total or len(page_entries) != expected_size:
+                raise RuntimeError(f"Incomplete admrule list: knd={knd} page={page} total={total}")
+            for entry in page_entries:
+                serial = entry.get("행정규칙일련번호", "")
+                if not serial or serial in kind_seen:
+                    raise RuntimeError(f"Missing or repeated admrule serial: knd={knd} page={page}")
+                kind_seen.add(serial)
+                if serial not in seen and _within_date_range(entry, "발령일자", date_range):
+                    seen.add(serial)
+                    entries.append(entry)
+            unknown = {entry.get("행정규칙종류", "") for entry in page_entries} - VALID_ADMRULE_TYPES
+            if unknown:
+                logger.warning("Unrecognized administrative rule types: %s", sorted(unknown))
             logger.info("admrul knd=%s page=%s: %s/%s", knd, page, min(page * 100, total), total)
 
             if max_entries is not None and len(entries) >= max_entries:
@@ -66,12 +87,21 @@ def fetch_all_current(
     return entries
 
 
-def _fetch_detail_task(serial_no: str, counter: Counter) -> None:
-    if cache.get_detail(serial_no) is not None:
-        counter.inc("cached")
-        return
+def _fetch_detail_task(serial_no: str, counter: Counter, refresh_current: bool = False) -> None:
+    cached = cache.get_detail(serial_no)
+    refresh = False
+    if cached is not None:
+        if refresh_current:
+            root = ElementTree.fromstring(cached)
+            refresh = root.findtext(".//현행여부", "").strip().upper() == "N"
+        if not refresh:
+            counter.inc("cached")
+            return
     try:
-        get_admrule_detail(serial_no)
+        if refresh:
+            get_admrule_detail(serial_no, refresh=True)
+        else:
+            get_admrule_detail(serial_no)
         record_requests(1, corpus="admrules")
         checkpoint.mark_detail_processed(serial_no)
         counter.inc("fetched")
@@ -90,7 +120,7 @@ def _fetch_detail_task(serial_no: str, counter: Counter) -> None:
         counter.inc("errors")
 
 
-def fetch_details(entries: list[dict], workers: int = CONCURRENT_WORKERS, limit: int | None = None) -> Counter:
+def fetch_details(entries: list[dict], workers: int = CONCURRENT_WORKERS, limit: int | None = None, *, refresh_current: bool = False) -> Counter:
     serials = []
     seen = set()
     for entry in entries:
@@ -101,9 +131,10 @@ def fetch_details(entries: list[dict], workers: int = CONCURRENT_WORKERS, limit:
     if limit is not None:
         serials = serials[:limit]
 
+    current_serials = {entry.get("행정규칙일련번호") for entry in entries if entry.get("현행연혁구분") == "현행"}
     counter = Counter()
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(_fetch_detail_task, serial, counter) for serial in serials]
+        futures = [pool.submit(_fetch_detail_task, serial, counter, refresh_current and serial in current_serials) for serial in serials]
         for future in as_completed(futures):
             future.result()
     return counter
@@ -113,13 +144,13 @@ def prune_stale_cache(entries: list[dict]) -> list[str]:
     serials = {str(entry.get("행정규칙일련번호", "")) for entry in entries if entry.get("행정규칙일련번호")}
     removed = cache.prune_details(serials)
     if removed:
-        logger.info("removed stale admrule detail cache files: count=%s", len(removed))
+        logger.info("archived withdrawn admrule detail cache files: count=%s", len(removed))
     return removed
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch and cache admrule history detail XML")
-    parser.add_argument("--knd", action="append", choices=sorted(ADMRULE_TYPES), help="행정규칙종류 code 1..6. Repeatable.")
+    parser.add_argument("--knd", action="append", choices=sorted(ADMRULE_TYPES), help="Optional 행정규칙종류 code 1..8. Repeatable; omitted means all types.")
     parser.add_argument("--org", default="", help="Optional law.go.kr org code filter")
     parser.add_argument("--limit", type=int, help="Limit detail fetches for testing")
     parser.add_argument("--workers", type=int, default=CONCURRENT_WORKERS)
@@ -130,9 +161,11 @@ def main() -> None:
     if not args.skip_quota_check:
         ensure_headroom(expected_requests=args.limit or 60000, corpus="admrules")
     entries = fetch_all_current(knd_values=args.knd, org=args.org, max_entries=args.limit)
-    if args.limit is None and args.knd is None and not args.org:
-        prune_stale_cache(entries)
-    counter = fetch_details(entries, workers=args.workers, limit=args.limit)
+    full_run = args.limit is None and args.knd is None and not args.org
+    current = fetch_all_current(history=False) if full_run else []
+    if full_run and (not entries or not current):
+        raise RuntimeError("Empty full administrative rule list; cache remains unchanged")
+    counter = fetch_details(entries + current, workers=args.workers, limit=args.limit, refresh_current=full_run)
     cached, fetched, errors = counter.snapshot()
     known = counter.snapshot_all().get("known_failures", 0)
     logger.info(
@@ -145,6 +178,11 @@ def main() -> None:
     if known:
         logger.warning("Known admrule detail failures skipped: known_failures=%s", known)
     _exit_if_errors(errors)
+    if full_run:
+        from .snapshot import write_current_snapshot
+
+        write_current_snapshot(current, history_entries=entries)
+        prune_stale_cache(entries + current)
 
 
 if __name__ == "__main__":
