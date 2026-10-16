@@ -47,6 +47,139 @@ def _raise_if_html_api_error(text: str, context: str) -> None:
         message = unescape(re.sub(r"<[^>]+>", "", message_match.group(1)).strip())
     raise RuntimeError(f"API error for {context}: {result} - {message}")
 
+# Restrict repair to references that contain CDATA and XML whitespace.
+_REF_NAME = "조문참고자료"
+_REF_CLOSE = "</조문참고자료>".encode("utf-8")
+_XML_SPACE = b" \t\r\n"
+_XML_TAG = re.compile(rb'''<(/?)([^\s<>/="'!?]+)((?:[^<>"']|"[^"]*"|'[^']*')*)>''')
+_XML_ATTRIBUTE = re.compile(rb'''([^\s=]+)\s*=\s*(?:"[^"]*"|'[^']*')''')
+
+
+def repair_law_xml(raw: bytes) -> bytes:
+    """Close supported reference elements without other byte changes."""
+    try:
+        ElementTree.fromstring(raw)
+        return raw
+    except ElementTree.ParseError:
+        pass
+    except (LookupError, ValueError):
+        return raw
+    try:
+        raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw
+
+    # Each frame holds the name, element ordinal, and candidate eligibility.
+    stack: list[tuple[str, int, bool]] = []
+    insertions: list[int] = []
+    repaired_ordinals: list[int] = []
+    ordinal = 0
+    position = 0
+    while position < len(raw):
+        if raw[position:position + 1] != b"<":
+            end = raw.find(b"<", position)
+            if end < 0:
+                end = len(raw)
+            if stack and raw[position:end].strip(_XML_SPACE):
+                name, index, _ = stack[-1]
+                stack[-1] = (name, index, False)
+            position = end
+            continue
+
+        if raw.startswith(b"<![CDATA[", position):
+            end = raw.find(b"]]>", position + 9)
+            if end < 0:
+                return raw
+            position = end + 3
+            continue
+        if raw.startswith((b"<!--", b"<?"), position):
+            comment = raw.startswith(b"<!--", position)
+            terminator = b"-->" if comment else b"?>"
+            end = raw.find(terminator, position + (4 if comment else 2))
+            if end < 0:
+                return raw
+            token = raw[position:end + len(terminator)]
+            if token.startswith(b"<?xml"):
+                encoding = re.search(rb'''encoding\s*=\s*["']([^"']+)["']''', token)
+                if encoding and encoding.group(1).lower() != b"utf-8":
+                    return raw
+            if stack:
+                name, index, _ = stack[-1]
+                stack[-1] = (name, index, False)
+            position = end + len(terminator)
+            continue
+        if raw.startswith(b"<!", position):
+            return raw
+
+        match = _XML_TAG.match(raw, position)
+        if match is None:
+            return raw
+        closing = bool(match.group(1))
+        name = match.group(2).decode("utf-8")
+        tail = match.group(3)
+        token = match.group()
+        self_closing = tail.endswith(b"/")
+        if ":" in name:
+            return raw
+        if closing:
+            if tail.strip(_XML_SPACE):
+                return raw
+        else:
+            attributes = _XML_ATTRIBUTE.findall(tail)
+            if any(key == b"xmlns" or b":" in key for key in attributes):
+                return raw
+            try:
+                ElementTree.fromstring(token if self_closing else token[:-1] + b"/>")
+            except ElementTree.ParseError:
+                return raw
+
+        if stack and stack[-1][2]:
+            boundary = (
+                closing and name == "조문단위"
+                or not closing and not attributes and name in ("조문내용", _REF_NAME)
+            )
+            if boundary:
+                _, index, _ = stack.pop()
+                insertions.append(position)
+                repaired_ordinals.append(index)
+
+        if closing:
+            if not stack or stack[-1][0] != name:
+                return raw
+            stack.pop()
+        else:
+            eligible = (
+                name == _REF_NAME and not attributes
+                and bool(stack) and stack[-1][0] == "조문단위"
+            )
+            if stack:
+                parent, index, _ = stack[-1]
+                stack[-1] = (parent, index, False)
+            if not self_closing:
+                stack.append((name, ordinal, eligible))
+            ordinal += 1
+        position = match.end()
+
+    if stack or not insertions:
+        return raw
+    pieces: list[bytes] = []
+    previous = 0
+    for offset in insertions:
+        pieces.extend((raw[previous:offset], _REF_CLOSE))
+        previous = offset
+    pieces.append(raw[previous:])
+    repaired = b"".join(pieces)
+    try:
+        root = ElementTree.fromstring(repaired)
+    except ElementTree.ParseError:
+        return raw
+    elements = list(root.iter())
+    if len(elements) != ordinal:
+        return raw
+    if any(elements[index].tag != _REF_NAME or len(elements[index]) for index in repaired_ordinals):
+        return raw
+    return repaired
+
 
 def _absolute_law_url(value: str) -> str:
     value = (value or "").strip()
@@ -185,7 +318,8 @@ def get_law_detail(
 ) -> dict:
     """Fetch full law text and metadata by MST ID.
 
-    Returns dict with metadata fields and 조문 (articles) list.
+    Return metadata, articles, addenda, attachments, and validated XML bytes.
+    The raw_xml field may contain supported repairs. Cache files use these bytes.
     """
     params = {
         "target": "law",
@@ -205,7 +339,20 @@ def get_law_detail(
         )
         raw = resp.content
 
-    root = ElementTree.fromstring(raw)
+    reference_repaired = False
+    try:
+        root = ElementTree.fromstring(raw)
+    except ElementTree.ParseError as original_error:
+        repaired = repair_law_xml(raw)
+        if repaired == raw:
+            raise
+        try:
+            root = ElementTree.fromstring(repaired)
+        except ElementTree.ParseError:
+            raise original_error from None
+        raw = repaired
+        reference_repaired = True
+
     _raise_if_api_error(root, f"MST {mst_id}")
 
     # Parse metadata
@@ -256,15 +403,18 @@ def get_law_detail(
             "부칙내용": buchik.findtext("부칙내용", ""),
         })
 
-    # Cache raw XML after successful parse (skip error responses)
-    if not cached:
+    attachments = _attachments_from_xml(root)
+    # Publish validated parser input only after all extraction succeeds.
+    if cached != raw:
         cache.put_detail(str(mst_id), raw)
+    if reference_repaired:
+        logger.warning("Repaired malformed XML for MST %s (unclosed 조문참고자료)", mst_id)
 
     return {
         "metadata": metadata,
         "articles": articles,
         "addenda": addenda,
-        "attachments": _attachments_from_xml(root),
+        "attachments": attachments,
         "raw_xml": raw,
     }
 
