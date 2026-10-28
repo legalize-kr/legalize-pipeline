@@ -26,13 +26,42 @@ def write_current_snapshot(entries: list[dict], history_entries: list[dict] | No
     seen = set()
     excluded = []
     conflicts = []
+    grouped = {}
     for entry in entries:
         if entry.get("현행연혁구분") != "현행":
             continue
         identity, serial = entry.get("행정규칙ID", ""), entry.get("행정규칙일련번호", "")
-        if not identity or not serial or not serial.isascii() or not serial.isdecimal() or identity in seen:
+        if not identity or not serial or not serial.isascii() or not serial.isdecimal():
             raise RuntimeError(f"Invalid or duplicate current rule identity: {identity}")
+        candidates = grouped.setdefault(identity, {})
+        if serial in candidates:
+            raise RuntimeError(f"Invalid or duplicate current rule identity: {identity}")
+        candidates[serial] = entry
+
+    for identity, candidates in grouped.items():
         seen.add(identity)
+        if len(candidates) > 1:
+            current = []
+            for serial in candidates:
+                raw = get_admrule_detail(serial, refresh=True)
+                metadata = metadata_from_raw(raw)
+                if admrule_identity(metadata) != identity or metadata["행정규칙일련번호"] != serial:
+                    raise RuntimeError(f"Current admrule identity mismatch: {identity}/{serial}")
+                status = metadata.get("현행여부")
+                if status not in {"Y", "N"}:
+                    raise RuntimeError(f"Unknown current admrule status: {identity}/{serial}")
+                if status == "Y":
+                    current.append(serial)
+            if len(current) != 1:
+                raise RuntimeError(f"Ambiguous current admrule identity: {identity}: current={current}")
+            serial = current[0]
+            conflicts.append({"id": identity, "serial": serial, "reason": "duplicate_current_list_identity",
+                              "candidate_serials": sorted(candidates)})
+            logger.warning("Current list repeats admrule %s across %s revisions; live detail selects %s",
+                           identity, len(candidates), serial)
+        else:
+            serial = next(iter(candidates))
+        entry = candidates[serial]
         if is_repeal_revision({"제개정구분": entry.get("제개정구분명", ""),
                                "제개정구분코드": entry.get("제개정구분코드", "")}):
             excluded.append({"id": identity, "serial": serial, "reason": "repeal"})
