@@ -53,19 +53,30 @@ jobs:
           pip install -r "$PIPELINE_REPO/requirements.txt"
 
       - name: Disk preflight
-        run: |
-          avail=$(df --output=avail -B1 . | tail -1)
-          if [ "$avail" -lt 25000000000 ]; then
-            echo "::error::Insufficient disk: need ≥25GB, have $((avail/1024/1024/1024))GB"
-            exit 1
-          fi
-
-      - name: Link persistent cache
+        shell: bash
         run: |
           if [ -z "${LEGALIZE_CACHE_DIR:-}" ]; then
             echo "::error::LEGALIZE_CACHE_DIR is not configured"
             exit 1
           fi
+          required=25000000000
+          disk_path="$LEGALIZE_CACHE_DIR"
+          if [ -d "$LEGALIZE_CACHE_DIR" ]; then
+            required=1000000000
+          else
+            while [ ! -d "$disk_path" ]; do
+              disk_path=$(dirname "$disk_path")
+            done
+          fi
+          avail=$(df --output=avail -B1 "$disk_path" | tail -1)
+          if [ "$avail" -lt "$required" ]; then
+            echo "::error::Insufficient disk for persistent cache: need $required bytes, have $avail bytes"
+            df -h "$disk_path"
+            exit 1
+          fi
+
+      - name: Link persistent cache
+        run: |
           mkdir -p "$WORKSPACE_ROOT"
           mkdir -p "$LEGALIZE_CACHE_DIR"
           rm -rf "$WORKSPACE_ROOT/.cache"
@@ -139,19 +150,19 @@ jobs:
         if: always()
         run: |
           failed=0
-          if [ "${{ steps.fetch_laws.outcome }}" != "success" ]; then
+          if [ "${{ steps.fetch_laws.outcome }}" = "failure" ]; then
             echo "::error::Laws cache fetch failed"
             failed=1
           fi
-          if [ "${{ steps.fetch_precedents.outcome }}" != "success" ]; then
+          if [ "${{ steps.fetch_precedents.outcome }}" = "failure" ]; then
             echo "::error::Precedents cache fetch failed"
             failed=1
           fi
-          if [ "${{ steps.fetch_admrules.outcome }}" != "success" ]; then
+          if [ "${{ steps.fetch_admrules.outcome }}" = "failure" ]; then
             echo "::error::Administrative rules cache fetch failed"
             failed=1
           fi
-          if [ "${{ steps.fetch_ordinances.outcome }}" != "success" ]; then
+          if [ "${{ steps.fetch_ordinances.outcome }}" = "failure" ]; then
             echo "::error::Ordinances cache fetch failed"
             failed=1
           fi

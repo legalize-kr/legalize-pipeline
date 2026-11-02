@@ -5,13 +5,15 @@ entries:
   - serial: "1164395"
     reason: "upstream_invalid_xml_character"
     expected_error: "invalid 자치법규일련번호=<missing>"
-    expires_on: "2026-10-31"
+    # Revalidated 2026-11-02; evidence: tests/fixtures/detail_failures_20261102.json
+    expires_on: "2027-01-31"
   # Verified 2026-07-12: law.go.kr returns an XHTML UnmarshalException because
   # the source OrdinInfo XML contains U+0005 in a CDATA section.
   - serial: "886588"
     reason: "upstream_invalid_xml_character"
     expected_error: "invalid 자치법규일련번호=<missing>"
-    expires_on: "2026-10-31"
+    # Revalidated 2026-11-02; evidence: tests/fixtures/detail_failures_20261102.json
+    expires_on: "2027-01-31"
   # Verified 2026-07-12 by five retries in Daily Cache Refresh run
   # 29176571741. lawService.do consistently returns HTTP 500.
   - serial: "740452"
@@ -141,7 +143,8 @@ entries:
       - "487216"
     reason: "upstream_malformed_xml"
     expected_error: "not well-formed (invalid token)"
-    expires_on: "2026-10-31"
+    # Revalidated 2026-11-02; evidence: tests/fixtures/detail_failures_20261102.json
+    expires_on: "2027-01-31"
   # The endpoint returns parseable error documents without the requested
   # 자치법규일련번호 for these serials in all three verification runs.
   - serials:
@@ -159,7 +162,8 @@ entries:
       - "1172879"
     reason: "upstream_missing_serial"
     expected_error: "invalid 자치법규일련번호=<missing>"
-    expires_on: "2026-10-31"
+    # Revalidated 2026-11-02; evidence: tests/fixtures/detail_failures_20261102.json
+    expires_on: "2027-01-31"
   # lawService.do returned HTTP 500 after all retries in all three runs.
   - serials:
       - "899529"
@@ -177,7 +181,8 @@ entries:
       - "1177584"
     reason: "upstream_missing_serial"
     expected_error: "invalid 자치법규일련번호=<missing>"
-    expires_on: "2026-10-31"
+    # Revalidated 2026-11-02; evidence: tests/fixtures/detail_failures_20261102.json
+    expires_on: "2027-01-31"
   # Reproduced during the initial fetch and recovery pass in Daily Cache
   # Refresh run 29691651981. The response omits the requested serial.
   - serial: "949968"
@@ -193,8 +198,6 @@ entries:
   # Reproduced during both the initial fetch and recovery pass in Daily Cache
   # Refresh run 29845002668. These responses omit the requested serial.
   - serials:
-      - "692085"
-      - "701762"
       - "722942"
       - "729362"
       - "729365"
@@ -207,12 +210,20 @@ entries:
     reason: "upstream_missing_serial"
     expected_error: "invalid 자치법규일련번호=<missing>"
     expires_on: "2026-10-31"
+  # Revalidated 2026-11-02; evidence: tests/fixtures/detail_failures_20261102.json
+  - serials:
+      - "692085"
+      - "701762"
+    reason: "upstream_missing_serial"
+    expected_error: "invalid 자치법규일련번호=<missing>"
+    expires_on: "2027-01-31"
   # Reproduced during both passes of the same run. lawService.do returns
   # malformed XML with mismatched tags for this serial.
   - serial: "2000603"
     reason: "upstream_malformed_xml"
     expected_error: "mismatched tag"
-    expires_on: "2026-10-31"
+    # Revalidated 2026-11-02; evidence: tests/fixtures/detail_failures_20261102.json
+    expires_on: "2027-01-31"
   # Reproduced during both the initial fetch and recovery pass in Daily Cache
   # Refresh run 29908787265. These responses omit the requested serial.
   - serials:
@@ -224,34 +235,41 @@ entries:
       - "704068"
     reason: "upstream_missing_serial"
     expected_error: "invalid 자치법규일련번호=<missing>"
-    expires_on: "2026-10-31"
+    # Revalidated 2026-11-02; evidence: tests/fixtures/detail_failures_20261102.json
+    expires_on: "2027-01-31"
   # Reproduced during both the initial fetch and recovery pass in Daily Cache
   # Refresh run 29934184945. The response omits the requested serial.
   - serial: "888577"
     reason: "upstream_missing_serial"
     expected_error: "invalid 자치법규일련번호=<missing>"
-    expires_on: "2026-10-31"
+    # Revalidated 2026-11-02; evidence: tests/fixtures/detail_failures_20261102.json
+    expires_on: "2027-01-31"
   # Reproduced with the same missing serial response in Daily Cache Refresh
   # runs 30207300327, 30376390776, and 30467581002.
   - serials:
       - "866942"
       - "874079"
       - "1001768"
-      - "771298"
-      - "1039553"
       - "849946"
       - "859315"
       - "852874"
-      - "960467"
-      - "1152684"
       - "770827"
       - "862899"
       - "834214"
-      - "849561"
-      - "795165"
-      - "868775"
       - "874969"
-      - "1004478"
     reason: "upstream_missing_serial"
     expected_error: "invalid 자치법규일련번호=<missing>"
     expires_on: "2026-10-31"
+  # Revalidated 2026-11-02; evidence: tests/fixtures/detail_failures_20261102.json
+  - serials:
+      - "771298"
+      - "1039553"
+      - "960467"
+      - "1152684"
+      - "849561"
+      - "795165"
+      - "868775"
+      - "1004478"
+    reason: "upstream_missing_serial"
+    expected_error: "invalid 자치법규일련번호=<missing>"
+    expires_on: "2027-01-31"

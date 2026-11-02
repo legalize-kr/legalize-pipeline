@@ -220,7 +220,19 @@ def test_fetch_details_records_history_404_as_no_result(monkeypatch):
     assert recorded == [(1, "ordinances")]
 
 
-def test_fetch_details_accepts_allowlisted_http_error(monkeypatch):
+@pytest.fixture
+def unexpired_http_failure(monkeypatch):
+    monkeypatch.setattr(fetch_cache.detail_failure_allowlist, "load_allowlist", lambda: {
+        "899529": {
+            "serial": "899529",
+            "reason": "upstream_http_500",
+            "expected_error": "500 Server Error",
+            "expires_on": "2099-01-01",
+        },
+    })
+
+
+def test_fetch_details_accepts_allowlisted_http_error(monkeypatch, unexpired_http_failure):
     failures = []
 
     def raise_500(ordinance_id, mst="", on_request_attempt=None):
@@ -248,7 +260,7 @@ def test_fetch_details_accepts_allowlisted_http_error(monkeypatch):
     assert failures == []
 
 
-def test_cached_refresh_does_not_accept_allowlisted_fetch_failure(monkeypatch):
+def test_cached_refresh_does_not_accept_allowlisted_fetch_failure(monkeypatch, unexpired_http_failure):
     failures = []
 
     def raise_500(ordinance_id, mst="", refresh=False, on_request_attempt=None):

@@ -12,7 +12,7 @@ def test_known_detail_failure_is_expiring_and_error_specific():
     assert detail_failure_allowlist.accepted_entry("1164395", error, today=date(2026, 7, 11))
     assert detail_failure_allowlist.is_listed("886588", today=date(2026, 7, 12))
     assert detail_failure_allowlist.accepted_entry("886588", error, today=date(2026, 7, 12))
-    assert not detail_failure_allowlist.is_listed("1164395", today=date(2026, 10, 31))
+    assert not detail_failure_allowlist.is_listed("1164395", today=date(2027, 1, 31))
 
 
 def test_known_http_500_details_are_expiring_and_error_specific():
@@ -51,7 +51,7 @@ def test_repeated_upstream_failures_are_grouped_and_expiring():
     assert missing is not None and missing["reason"] == "upstream_missing_serial"
     assert upstream_500 is not None and upstream_500["reason"] == "upstream_http_500"
     assert not detail_failure_allowlist.is_listed("1124911", today=date(2026, 7, 18))
-    assert not detail_failure_allowlist.is_listed("478868", today=date(2026, 10, 31))
+    assert not detail_failure_allowlist.is_listed("478868", today=date(2027, 1, 31))
 
 
 def test_latest_repeated_upstream_failures_are_quarantined():
