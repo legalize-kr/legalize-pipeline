@@ -1,12 +1,112 @@
 """Tests for admrules/fetch_cache.py."""
 
+import hashlib
+import json
 import sys
+from datetime import date
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
 import admrules.detail_failure_allowlist as detail_failure_allowlist
 from admrules import fetch_cache
 from core.counter import Counter
+
+
+@pytest.fixture
+def verified_no_result(tmp_path, monkeypatch, fixtures_dir):
+    from admrules import api_client
+
+    class ProbeDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 11, 3)
+
+    monkeypatch.setattr(detail_failure_allowlist, "date", ProbeDate)
+    detail_failure_allowlist.load_allowlist.cache_clear()
+    monkeypatch.setattr(fetch_cache.cache, "CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(fetch_cache.checkpoint, "CHECKPOINT_FILE", tmp_path / "checkpoint.json")
+    monkeypatch.setattr(fetch_cache, "record_requests", lambda *args, **kwargs: None)
+    evidence = json.loads((fixtures_dir / "admrule_no_result_2100000287624.json").read_text(encoding="utf-8"))
+    raw = (fixtures_dir / evidence["detail"]["fixture"]).read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == evidence["detail"]["sha256"]
+    request = Mock(return_value=SimpleNamespace(content=raw))
+    monkeypatch.setattr(api_client, "_request", request)
+    yield request
+    detail_failure_allowlist.load_allowlist.cache_clear()
+
+
+def test_verified_no_result_retries_without_caching_and_recovers(verified_no_result):
+    serial = "2100000287624"
+    counter = Counter()
+    fetch_cache._fetch_detail_task(serial, counter)
+    fetch_cache._fetch_detail_task(serial, counter)
+
+    assert counter.snapshot_all() == {"cached": 0, "fetched": 0, "errors": 0, "known_failures": 2}
+    assert verified_no_result.call_count == 2
+    assert fetch_cache.cache.get_detail(serial) is None
+    assert fetch_cache.checkpoint.get_processed_serials() == set()
+
+    recovered = f"<AdmRulService><행정규칙일련번호>{serial}</행정규칙일련번호></AdmRulService>".encode()
+    verified_no_result.return_value = SimpleNamespace(content=recovered)
+    fetch_cache._fetch_detail_task(serial, counter)
+
+    assert counter.snapshot() == (0, 1, 0)
+    assert fetch_cache.cache.get_detail(serial) == recovered
+    assert fetch_cache.checkpoint.get_processed_serials() == {serial}
+
+
+def test_unverified_no_result_remains_an_error(verified_no_result):
+    counter = Counter()
+    fetch_cache._fetch_detail_task("2100000287625", counter)
+
+    assert counter.snapshot() == (0, 0, 1)
+    assert fetch_cache.checkpoint.get_processed_serials() == set()
+
+
+@pytest.mark.parametrize("listed_current", [False, True])
+@pytest.mark.parametrize("entrypoint", ["fetch", "update"])
+def test_verified_no_result_preserves_current_selection(verified_no_result, tmp_path, monkeypatch, listed_current, entrypoint):
+    from admrules import snapshot, update
+
+    current = {"행정규칙일련번호": "1", "행정규칙ID": "1", "현행연혁구분": "현행"}
+    raw = (
+        "<AdmRulService><행정규칙일련번호>1</행정규칙일련번호><행정규칙ID>1</행정규칙ID>"
+        "<행정규칙명>기존 규칙</행정규칙명><행정규칙종류>훈령</행정규칙종류>"
+        "<소관부처명>행정안전부</소관부처명><발령일자>20261101</발령일자>"
+        "<현행여부>Y</현행여부><조문내용>제1조 기존 본문</조문내용></AdmRulService>"
+    ).encode()
+    unavailable_response = verified_no_result.return_value
+    verified_no_result.side_effect = lambda url, params: SimpleNamespace(content=raw) if params["ID"] == "1" else unavailable_response
+    fetch_cache.cache.put_detail("1", raw)
+    snapshot.write_current_snapshot([current], history_entries=[current])
+    path = fetch_cache.cache.CACHE_DIR / snapshot.SNAPSHOT_NAME
+    before = path.read_bytes()
+    unavailable = {"행정규칙일련번호": "2100000287624", "행정규칙ID": "2",
+                   "현행연혁구분": "현행" if listed_current else "연혁"}
+    rows = [current, unavailable]
+    monkeypatch.setattr(sys, "argv", ["admrules.fetch_cache", "--skip-quota-check"])
+    module = fetch_cache if entrypoint == "fetch" else update
+    monkeypatch.setattr(module, "fetch_all_current", lambda **kwargs: rows if kwargs.get("history", True) or listed_current else [current])
+    run = fetch_cache.main if entrypoint == "fetch" else lambda: update.run(repo=tmp_path / "output")
+    prune = Mock(wraps=fetch_cache.prune_stale_cache)
+    monkeypatch.setattr(fetch_cache, "prune_stale_cache", prune)
+
+    if listed_current:
+        with pytest.raises(RuntimeError, match="Missing current admrule detail"):
+            run()
+        assert path.read_bytes() == before
+        prune.assert_not_called()
+    else:
+        stats = run()
+        if entrypoint == "update":
+            assert stats["fetch_errors"] == stats["errors"] == 0
+            assert stats["skipped"] == 1
+        assert snapshot.load_current_snapshot()["rules"] == {"1": "1"}
+        assert prune.call_count == (1 if entrypoint == "fetch" else 0)
+    assert fetch_cache.cache.get_detail("1") == raw
+    assert fetch_cache.cache.get_detail("2100000287624") is None
 
 
 def test_fetch_all_current_pages_until_total(monkeypatch):

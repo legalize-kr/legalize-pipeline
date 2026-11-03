@@ -136,3 +136,14 @@ def test_repeated_http_500_is_quarantined_after_three_runs():
         "404 Client Error",
         today=date(2026, 7, 30),
     ) is None
+
+
+def test_verified_no_result_exception_is_specific_and_expires():
+    error = "no admrule detail for ID=2100000287624"
+    entry = allowlist.accepted_entry("2100000287624", error, today=date(2026, 11, 3))
+
+    assert entry is not None
+    assert entry["reason"] == "upstream_no_result"
+    assert allowlist.accepted_entry("2100000287624", error, today=date(2026, 12, 3)) is None
+    assert allowlist.accepted_entry("2100000287624", "500 Server Error", today=date(2026, 11, 3)) is None
+    assert allowlist.accepted_entry("2100000287625", error, today=date(2026, 11, 3)) is None

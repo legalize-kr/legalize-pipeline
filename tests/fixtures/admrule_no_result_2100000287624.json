@@ -1,0 +1,46 @@
+{
+  "observed_on": "2026-11-03",
+  "serial": "2100000287624",
+  "source_run": {
+    "url": "https://github.com/legalize-kr/legalize-pipeline/actions/runs/41538333983/attempts/1",
+    "job_id": 125599929370,
+    "detail_failure_at": "2026-11-03T00:19:42Z",
+    "fetch_summary": {
+      "cached": 150992,
+      "fetched": 0,
+      "known_failures": 8,
+      "errors": 1
+    }
+  },
+  "detail": {
+    "url": "https://www.law.go.kr/DRF/lawService.do?OC=legalize-kr&target=admrul&ID=2100000287624&type=XML",
+    "http_status": 200,
+    "fixture": "admrule_no_result.xml",
+    "sha256": "c2e993d0713fb7e3557cc685aaa3ec1cb9f5c1b2f8b356b44d2703f1f0aa6dd9",
+    "root": "Law",
+    "message": "일치하는 행정규칙이 없습니다.  행정규칙명을 확인하여 주십시오."
+  },
+  "official_page": {
+    "url": "https://www.law.go.kr/admRulInfoP.do?admRulSeq=2100000287624",
+    "http_status": 200,
+    "message": "해당 행정규칙이 존재하지 않습니다."
+  },
+  "current_list": {
+    "url": "https://www.law.go.kr/DRF/lawSearch.do?OC=legalize-kr&target=admrul&type=XML&nw=1&sort=lasc&display=100",
+    "collector": "admrules.fetch_cache.fetch_all_current(history=False)",
+    "first_page": 1,
+    "last_page": 243,
+    "total_count": 24235,
+    "matching_rows": 0,
+    "filters": "No date, kind, organization, or query filter."
+  },
+  "policy": {
+    "reason": "upstream_no_result",
+    "expires_on": "2026-12-03",
+    "retry_each_run": true,
+    "cache_no_result_xml": false,
+    "mark_processed": false,
+    "allow_missing_selected_current_detail": false,
+    "establishes_legal_repeal": false
+  }
+}

@@ -14,6 +14,13 @@
 # Loader: admrules/detail_failure_allowlist.py
 
 entries:
+  # Verified 2026-11-03: the detail API and official page report no result.
+  # The complete nw=1 list (24,235 rows) also omits this serial.
+  # Evidence: tests/fixtures/admrule_no_result_2100000287624.json
+  - serial: "2100000287624"
+    reason: "upstream_no_result"
+    expected_error: "no admrule detail for ID=2100000287624"
+    expires_on: "2026-12-03"
   # Verified 2026-07-05 by full admrul history=True/nw=2 cache refresh
   # and direct lawService.do probes for each missing serial.
   - serial: "2100000027840"

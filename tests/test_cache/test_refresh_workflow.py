@@ -69,9 +69,15 @@ def test_report_only_marks_actual_fetch_failures(tmp_path, outcome, fetch):
             '${{ steps.fetch_' + name + '.outcome }}',
             outcome if name == fetch else 'success',
         )
+    summary = tmp_path / 'summary.md'
     result = subprocess.run(
         ['bash', '-eo', 'pipefail', '-c', script], cwd=tmp_path,
+        env={**os.environ, 'GITHUB_STEP_SUMMARY': str(summary)},
         capture_output=True, text=True,
     )
     assert result.returncode == (1 if outcome == 'failure' else 0)
     assert result.stdout.count('::error::') == (1 if outcome == 'failure' else 0)
+    report = summary.read_text(encoding='utf-8')
+    for name in ('laws', 'precedents', 'admrules', 'ordinances'):
+        assert f'- {name}: {outcome if name == fetch else "success"}' in report
+    assert 'before continue-on-error' in report

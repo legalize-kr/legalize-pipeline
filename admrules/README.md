@@ -23,6 +23,17 @@ The cache analyzer includes archived XML with the same precedence.
 Failed or partial fetches do not archive XML.
 Detail responses must contain the requested serial before they replace cached XML.
 
+Verified upstream detail failures use serial-specific exceptions in `data/known_detail_failures.yaml`.
+Each exception matches a recorded error and has an expiration date.
+The collector counts these failures as `known_failures` and retries them on each fetch.
+It does not cache no-result XML or mark the serial as processed.
+Unknown serials, changed errors, and expired exceptions still stop a full fetch.
+An exception cannot bypass the required detail for a listed current rule.
+
+The exception for `2100000287624` expires on 2026-12-03.
+Its evidence is in `tests/fixtures/admrule_no_result_2100000287624.json` at the repository root.
+The no-result response does not establish legal repeal.
+
 `import_admrules.py` writes revisions in `발령일자`, `행정규칙일련번호`, path order.
 The rule identity is `행정규칙ID`, falling back to `행정규칙일련번호` only when
 the ID is missing. Repeal codes `200404` and `200410` delete the latest file
