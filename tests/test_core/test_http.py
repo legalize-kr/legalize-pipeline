@@ -1,17 +1,21 @@
 """Tests for core/http.py."""
 
+import importlib
 from unittest.mock import MagicMock
 
 import pytest
 import responses as responses_lib
 from requests.exceptions import ConnectionError
 from requests.exceptions import HTTPError
+from requests.exceptions import RequestException
 
 from core.http import make_request
 from core.throttle import Throttle
 
 LAW_API_BASE = "https://www.law.go.kr/DRF"
 TEST_URL = f"{LAW_API_BASE}/lawSearch.do"
+MAINTENANCE_HTML = """<!DOCTYPE HTML>
+<html><head><title>시스템 점검</title></head><body>시스템 점검<br></body></html>""".encode()
 
 
 def _throttle() -> Throttle:
@@ -145,3 +149,111 @@ def test_make_request_reports_each_attempt():
     )
 
     assert len(attempts) == 2
+
+
+@pytest.mark.parametrize("body", [
+    MAINTENANCE_HTML,
+    b"\xef\xbb\xbf \r\n<HTML lang='ko'><body>Maintenance</body></HTML>",
+    b'<?xml version="1.0"?><html><body>Maintenance</body></html>',
+])
+@responses_lib.activate
+def test_make_request_retries_html_for_xml(body, monkeypatch):
+    sleep = MagicMock()
+    monkeypatch.setattr("core.http.time.sleep", sleep)
+    monkeypatch.setattr("core.http.random.uniform", lambda *_: 0)
+    responses_lib.add(responses_lib.GET, TEST_URL, body=body, status=200)
+    responses_lib.add(responses_lib.GET, TEST_URL, body=b"<ok/>", status=200)
+
+    response = make_request(
+        TEST_URL, {"type": "XML"}, throttle=_throttle(), api_key="k",
+        max_retries=1, backoff_base=3,
+    )
+
+    assert response.content == b"<ok/>"
+    assert len(responses_lib.calls) == 2
+    sleep.assert_called_once_with(3)
+
+
+@responses_lib.activate
+def test_make_request_maintenance_exhausts_retries_without_leaking_key(monkeypatch, caplog):
+    attempts = []
+    monkeypatch.setattr("core.http.time.sleep", lambda _: None)
+    responses_lib.add(responses_lib.GET, TEST_URL, body=MAINTENANCE_HTML, status=200)
+
+    with pytest.raises(RequestException, match="HTML instead of XML.*maintenance") as error:
+        make_request(
+            TEST_URL, {"type": "XML"}, throttle=_throttle(), api_key="private-test-key",
+            max_retries=2, backoff_base=0,
+            on_attempt=lambda: attempts.append(True),
+        )
+
+    assert len(responses_lib.calls) == len(attempts) == 3
+    assert error.value.response.status_code == 200
+    assert "private-test-key" not in str(error.value) + caplog.text
+
+
+@responses_lib.activate
+def test_make_request_allows_html_when_requested():
+    responses_lib.add(responses_lib.GET, TEST_URL, body=MAINTENANCE_HTML, status=200)
+    response = make_request(
+        TEST_URL, {"type": "HTML"}, throttle=_throttle(), api_key="k",
+    )
+    assert response.content == MAINTENANCE_HTML
+    assert len(responses_lib.calls) == 1
+
+
+@responses_lib.activate
+def test_make_request_accepts_xml_with_html_content_type():
+    responses_lib.add(
+        responses_lib.GET, TEST_URL, body=b"<Law>no result</Law>", status=200,
+        content_type="text/html",
+    )
+    response = make_request(
+        TEST_URL, {"type": "XML"}, throttle=_throttle(), api_key="k",
+    )
+    assert response.content == b"<Law>no result</Law>"
+    assert len(responses_lib.calls) == 1
+
+
+@pytest.mark.parametrize("package,search_name,root_tag", [
+    ("laws", "search_laws", "LawSearch"),
+    ("precedents", "search_precedents", "PrecSearch"),
+    ("admrules", "search_admrules", "AdmRulSearch"),
+    ("ordinances", "search_ordinances", "OrdinSearch"),
+])
+@responses_lib.activate
+def test_search_recovers_after_maintenance(package, search_name, root_tag, monkeypatch):
+    api = importlib.import_module(f"{package}.api_client")
+    monkeypatch.setattr(api, "_throttle", _throttle())
+    monkeypatch.setattr("core.http.time.sleep", lambda _: None)
+    responses_lib.add(responses_lib.GET, TEST_URL, body=MAINTENANCE_HTML, status=200)
+    xml = f"<{root_tag}><totalCnt>0</totalCnt><page>1</page></{root_tag}>".encode()
+    responses_lib.add(responses_lib.GET, TEST_URL, body=xml, status=200)
+
+    assert getattr(api, search_name)()["totalCnt"] == 0
+    assert len(responses_lib.calls) == 2
+
+
+@pytest.mark.parametrize("package,detail_name", [
+    ("laws", "get_law_detail"),
+    ("precedents", "get_precedent_detail"),
+    ("admrules", "get_admrule_detail"),
+    ("ordinances", "get_ordinance_detail"),
+])
+@responses_lib.activate
+def test_detail_maintenance_does_not_write_cache(package, detail_name, monkeypatch):
+    api = importlib.import_module(f"{package}.api_client")
+    monkeypatch.setattr(api, "_throttle", _throttle())
+    monkeypatch.setattr("core.http.time.sleep", lambda _: None)
+    monkeypatch.setattr(api.cache, "get_detail", lambda *args, **kwargs: None)
+    put_detail = MagicMock()
+    monkeypatch.setattr(api.cache, "put_detail", put_detail)
+    responses_lib.add(
+        responses_lib.GET, f"{LAW_API_BASE}/lawService.do", body=MAINTENANCE_HTML, status=200,
+    )
+
+    with pytest.raises(RequestException, match="HTML instead of XML"):
+        getattr(api, detail_name)("123456")
+
+    assert len(responses_lib.calls) == api.MAX_RETRIES + 1
+    put_detail.assert_not_called()

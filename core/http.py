@@ -2,6 +2,7 @@
 
 import logging
 import random
+import re
 import time
 from collections.abc import Callable, Collection
 
@@ -39,6 +40,15 @@ def make_request(
                 time.sleep(wait)
                 continue
             resp.raise_for_status()
+            if params.get("type") == "XML" and re.match(
+                br"\s*(?:<\?xml[^>]*>\s*)?(?:<!doctype\s+html\b|<html\b)",
+                resp.content.lstrip(b"\xef\xbb\xbf"),
+                re.IGNORECASE,
+            ):
+                raise requests.RequestException(
+                    "Upstream API returned HTML instead of XML (possible service maintenance)",
+                    response=resp,
+                )
             return resp
         except requests.RequestException as e:
             status = e.response.status_code if e.response is not None else None
