@@ -175,9 +175,15 @@ def _message_field(body: str, field: str) -> str:
     return match.group(1) if match else ""
 
 
-def _git_commit_records(repo_dir: Path) -> dict[str, GitRecord]:
+def _git_commit_records(repo_dir: Path, *, all_refs: bool = True) -> dict[str, GitRecord]:
+    if not all_refs:
+        head = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "--verify", "--quiet", "HEAD"],
+                              capture_output=True)
+        if head.returncode == 1:  # Unborn branch.
+            return {}
+        head.check_returncode()
     result = subprocess.run(
-        ["git", "-C", str(repo_dir), "log", "--all", "--format=%H%x00%cI%x00%B%x1e"],
+        ["git", "-C", str(repo_dir), "log", "--all" if all_refs else "HEAD", "--format=%H%x00%cI%x00%B%x1e"],
         check=True,
         capture_output=True,
         text=True,
@@ -412,7 +418,7 @@ def audit(
     cutoff = (today or date.today()) - timedelta(days=recent_days)
 
     history_records, history_names = _load_history_records(cache_dir)
-    git_records = _git_commit_records(repo_dir)
+    git_records = _git_commit_records(repo_dir, all_refs=False)
     git_msts = set(git_records)
     git_msts_missing_from_history = [
         git_records[mst]

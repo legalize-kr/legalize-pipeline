@@ -1,5 +1,6 @@
 """Tests for deterministic precedent update ordering."""
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -212,3 +213,21 @@ def test_run_refreshes_recent_candidates_and_allows_update_commits(monkeypatch, 
     assert stats["committed"] == 1
     assert calls == [("101", True)]
     assert committed == [True]
+
+def test_import_dedup_uses_exact_serial_on_current_branch(tmp_path):
+    from precedents.git_engine import commit_precedent
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
+
+    git("init", "-b", "main")
+    git("config", "user.name", "Test")
+    git("config", "user.email", "test@example.invalid")
+    git("commit", "--allow-empty", "-m", "published", "-m", "판례일련번호: 1230")
+    git("switch", "-c", "archive")
+    git("commit", "--allow-empty", "-m", "archived", "-m", "판례일련번호: 123")
+    git("switch", "main")
+    (tmp_path / "case.md").write_text("decision")
+    parsed = {"판례정보일련번호": "123", "선고일자": "20240101"}
+    assert commit_precedent("case.md", parsed, cwd=tmp_path)
+    assert commit_precedent("case.md", parsed, cwd=tmp_path) is None

@@ -316,3 +316,13 @@ def test_audit_history_vs_git_normalizes_middle_dot_variants(tmp_path: Path):
     )
 
     assert report.commit_metadata_mismatches == []
+
+
+def test_audit_counts_only_versions_reachable_from_head(tmp_path):
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    _run_git(repo, "commit", "--allow-empty", "-m", "initial")
+    _run_git(repo, "switch", "-c", "archive")
+    _run_git(repo, "commit", "--allow-empty", "-m", "archived", "-m", "법령MST: 500")
+    _run_git(repo, "switch", "-")
+    assert audit(cache_dir=tmp_path / "cache", repo_dir=repo).git_msts == 0

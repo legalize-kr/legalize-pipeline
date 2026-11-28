@@ -68,7 +68,8 @@ def test_duplicate_current_source_through_daily_entrypoints(tmp_path, monkeypatc
         fetch_cache.main()
     else:
         subprocess.run(["git", "init", "-b", "main", str(repo)], check=True, capture_output=True)
-        subprocess.run(["git", "-C", str(repo), "commit", "--allow-empty", "-m", "initial"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                        "commit", "--allow-empty", "-m", "initial"], check=True, capture_output=True)
         args = ["admrules.update", "--repo", str(repo), "--workers", "1", "--days", "14", "--commit"]
         monkeypatch.setattr(sys, "argv", args)
         if current_serial == "2100000241092":

@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from core.config import BOT_AUTHOR
+from core.git_engine import commit_exists as branch_has_commit
 from core.git_engine import historical_commit_env
 
 logger = logging.getLogger(__name__)
@@ -27,16 +28,8 @@ def _run_git(*args: str, cwd: Path, env: dict | None = None) -> str:
 
 
 def commit_exists(prec_id: str, *, cwd: Path) -> bool:
-    """Check if a commit for this 판례일련번호 already exists."""
-    try:
-        log = _run_git(
-            "log", "--oneline", "--all",
-            f"--grep=판례일련번호: {prec_id}",
-            cwd=cwd,
-        )
-        return bool(log)
-    except RuntimeError:
-        return False
+    """Check the exact source serial in the branch being imported."""
+    return branch_has_commit(cwd, f"판례일련번호: {prec_id}")
 
 
 def commit_precedent(
