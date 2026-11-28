@@ -30,7 +30,7 @@ from .converter import (
     plan_current_law_paths,
     reset_path_registry,
 )
-from .git_engine import commit_law, commit_law_changes, head_law_snapshot
+from .git_engine import commit_law, head_law_version
 
 logger = logging.getLogger(__name__)
 
@@ -46,86 +46,22 @@ def _as_int(value: str) -> int:
         return 0
 
 
-class VersionTracker:
-    """Keeps HEAD pointing at each file's newest law version.
+class RebuildRequired(RuntimeError):
+    """An older law revision requires insertion into rebuilt history."""
 
-    Backfilled MSTs are older than versions committed by earlier runs, so
-    committing them overwrites the file and leaves HEAD serving stale law text
-    (the file's history keeps every version, but its tip regresses). Seed from
-    HEAD on first touch, record every commit, then restore whatever ended up
-    behind.
-    """
 
-    def __init__(self) -> None:
-        # file_path -> (공포일자, 공포번호, MST)
-        self.newest: dict[str, tuple[str, str, str]] = {}
-        self.current: dict[str, tuple[str, str, str]] = {}
-        self.content: dict[str, str] = {}
-
-    @staticmethod
-    def _order(version: tuple[str, str, str]) -> tuple[str, int, int]:
-        """Rank a version the same way the canonical ingestion sort does.
-
-        Same-day amendments are ordered by 공포번호 then MST, so a same-date
-        backfill no longer reads as "not a regression".
-        """
-        prom, num, mst = version
-        return (prom, _as_int(num), _as_int(mst))
-
-    def seen(self, file_path: str) -> None:
-        """Seed a file's baseline from HEAD the first time it is touched."""
-        if file_path in self.newest:
-            return
-        snapshot = head_law_snapshot(file_path)
-        if snapshot:
-            head, content = snapshot
-            self.newest[file_path] = head
-            self.current[file_path] = head
-            self.content[file_path] = content
-
-    def committed(self, file_path: str, meta: dict, mst: str) -> None:
-        version = (
-            (meta.get("공포일자", "") or "").replace("-", ""),
-            str(meta.get("공포번호", "") or ""),
-            str(mst),
-        )
-        self.current[file_path] = version
-        known = self.newest.get(file_path)
-        if known is None or self._order(version) >= self._order(known):
-            self.newest[file_path] = version
-            content_path = KR_DIR.parent / file_path
-            if content_path.exists():
-                self.content[file_path] = content_path.read_text(encoding="utf-8")
-
-    def regressed(self) -> list[tuple[str, str, str]]:
-        """(file_path, newest_mst, held_공포일자) for files left behind."""
-        out = []
-        for path, want in sorted(self.newest.items()):
-            have = self.current.get(path)
-            if have is not None and self._order(have) < self._order(want):
-                out.append((path, want[2], have[0]))
-        return out
-
-    def restore(self) -> int:
-        """Restore the exact newest HEAD snapshot wherever a backfill regressed it."""
-        restored = 0
-        for path, mst, held in self.regressed():
-            logger.warning("HEAD regressed for %s (holds %s) — restoring MST=%s", path, held, mst)
-            try:
-                (KR_DIR.parent / path).write_text(self.content[path], encoding="utf-8")
-                prom = format_date(self.newest[path][0]) or "2000-01-01"
-                if commit_law_changes(
-                    [path],
-                    "chore(laws): 과거 이력 백필 후 최신 상태 복원",
-                    prom,
-                ):
-                    restored += 1
-                    logger.info("  Restored MST=%s %s %s", mst, prom, path)
-            except Exception as e:
-                from .failures import log_failure
-                log_failure("restore_newest", str(mst), path, e)
-                logger.error("Restore failed for %s: %s", path, e)
-        return restored
+def require_monotonic_revision(file_path: str, metadata: dict, mst: str) -> None:
+    head = head_law_version(file_path)
+    if head is None:
+        return
+    current = (head[0], _as_int(head[1]), _as_int(head[2]))
+    candidate = (
+        str(metadata.get("공포일자") or "").replace("-", ""),
+        _as_int(metadata.get("공포번호")),
+        _as_int(mst),
+    )
+    if candidate < current:
+        raise RebuildRequired(f"Law rebuild required: MST {mst} predates published MST {head[2]} at {file_path}")
 
 
 def build_commit_msg(law_name: str, law_type: str, mst: str, meta: dict) -> str:
@@ -222,7 +158,6 @@ def import_law_with_history(
     processed = get_processed_msts()
     committed = 0
     errors = 0
-    tracker = VersionTracker()
 
     for i, entry in enumerate(history, 1):
         mst = entry["법령일련번호"]
@@ -243,8 +178,6 @@ def import_law_with_history(
             law_id = meta.get("법령ID", "")
             file_path = get_law_path(fetched_name, law_type_name, law_id)
             abs_path = KR_DIR.parent / file_path
-            if not dry_run:
-                tracker.seen(file_path)
 
             # Merge history metadata into detail metadata
             meta["제개정구분"] = entry.get("제개정구분명", meta.get("제개정구분", ""))
@@ -258,7 +191,7 @@ def import_law_with_history(
                 logger.info(f"  [{i}/{len(history)}] [DRY-RUN] MST={mst} {prom_date} {amendment} -> {file_path}")
                 continue
 
-            # Write markdown (overwrites previous version — git tracks history)
+            require_monotonic_revision(file_path, meta, mst)
             content = law_to_markdown(detail)
             abs_path.parent.mkdir(parents=True, exist_ok=True)
             abs_path.write_text(content, encoding="utf-8")
@@ -272,9 +205,10 @@ def import_law_with_history(
             if result:
                 mark_processed(mst)
                 committed += 1
-                tracker.committed(file_path, meta, mst)
                 logger.info(f"  [{i}/{len(history)}] Committed MST={mst} {prom_date} {amendment}")
 
+        except RebuildRequired:
+            raise
         except ValueError as e:  # empty body (P1)
             from .failures import log_failure, mark_failed, mark_failed_and_quarantine
             log_failure("import_law_with_history", str(mst), law_name, e)
@@ -295,11 +229,7 @@ def import_law_with_history(
                         step="import_law_with_history", law_name=law_name)
             errors += 1
 
-    restored = tracker.restore() if not dry_run else 0
-    logger.info(
-        f"History import for {law_name}: committed={committed}, "
-        f"restored={restored}, errors={errors}"
-    )
+    logger.info(f"History import for {law_name}: committed={committed}, errors={errors}")
     return committed
 
 
@@ -435,7 +365,6 @@ def import_from_cache(
 
     committed = 0
     errors = 0
-    tracker = VersionTracker()
 
     for i, (mst, detail) in enumerate(entries, 1):
         meta = detail["metadata"]
@@ -448,13 +377,12 @@ def import_from_cache(
             file_path = planned_paths.get(mst) or get_law_path(law_name, law_type, law_id)
             abs_path = KR_DIR.parent / file_path
             prom_date = format_date(meta.get("공포일자", ""))
-            if not dry_run:
-                tracker.seen(file_path)
 
             if dry_run:
                 logger.info(f"  [{i}/{len(entries)}] [DRY-RUN] MST={mst} {prom_date} {law_name} -> {file_path}")
                 continue
 
+            require_monotonic_revision(file_path, meta, mst)
             content = law_to_markdown(detail)
             abs_path.parent.mkdir(parents=True, exist_ok=True)
             abs_path.write_text(content, encoding="utf-8")
@@ -467,9 +395,10 @@ def import_from_cache(
             if result:
                 mark_processed(mst)
                 committed += 1
-                tracker.committed(file_path, meta, mst)
                 logger.info(f"  [{i}/{len(entries)}] Committed MST={mst} {prom_date} {law_name}")
 
+        except RebuildRequired:
+            raise
         except ValueError as e:  # empty body (P1)
             from .failures import log_failure, mark_failed, mark_failed_and_quarantine
             log_failure("import_from_cache", str(mst), law_name, e)
@@ -493,10 +422,7 @@ def import_from_cache(
         if i % 100 == 0:
             logger.info(f"Progress: {i}/{len(entries)} (committed={committed}, errors={errors})")
 
-    restored = tracker.restore() if not dry_run else 0
-    logger.info(
-        f"Cache import done: committed={committed}, restored={restored}, errors={errors}"
-    )
+    logger.info(f"Cache import done: committed={committed}, errors={errors}")
     return committed
 
 
@@ -606,7 +532,6 @@ def import_from_csv(
         laws = laws[:limit]
 
     committed = 0
-    tracker = VersionTracker()
     for i, law in enumerate(laws, 1):
         mst = law["법령MST"]
         name = law["법령명"]
@@ -621,7 +546,7 @@ def import_from_csv(
                 logger.info(f"[DRY-RUN] {file_path}")
                 continue
 
-            tracker.seen(file_path)
+            require_monotonic_revision(file_path, law, mst)
             abs_path.parent.mkdir(parents=True, exist_ok=True)
             abs_path.write_text(build_csv_markdown(law), encoding="utf-8")
 
@@ -633,7 +558,8 @@ def import_from_csv(
             if commit_law(file_path, commit_msg, date, mst):
                 mark_processed(mst)
                 committed += 1
-                tracker.committed(file_path, law, mst)
+        except RebuildRequired:
+            raise
         except ValueError as e:  # empty body (P1)
             from .failures import log_failure, mark_failed, mark_failed_and_quarantine
             log_failure("import_from_csv", str(mst), name, e)
@@ -655,8 +581,7 @@ def import_from_csv(
         if i % 100 == 0:
             logger.info(f"Progress: {i}/{len(laws)} (committed={committed})")
 
-    restored = tracker.restore() if not dry_run else 0
-    logger.info(f"CSV import done: committed={committed}, restored={restored}")
+    logger.info(f"CSV import done: committed={committed}")
     return committed
 
 

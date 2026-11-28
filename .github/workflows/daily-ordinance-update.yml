@@ -86,6 +86,7 @@ jobs:
           python -m ordinances.validate "$ORDINANCE_KR_REPO"
 
       - name: Push changes
+        if: ${{ inputs.limit == '' }}
         working-directory: ${{ env.ORDINANCE_KR_REPO }}
         run: |
           if [ -n "$(git log origin/main..HEAD --oneline)" ]; then

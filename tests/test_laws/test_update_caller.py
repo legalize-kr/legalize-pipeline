@@ -526,7 +526,7 @@ def test_update_backfills_valid_cache_missing_msts_outside_search_window(
     assert detail_calls == ["259479", "281877"]
 
 
-def test_update_restores_newer_current_state_after_historical_backfill(
+def test_historical_backfill_requires_rebuild_before_writing(
     tmp_path,
     monkeypatch,
 ):
@@ -619,30 +619,19 @@ def test_update_restores_newer_current_state_after_historical_backfill(
         "과거 본문이다.",
     ]))
 
-    committed = update_mod.update(
-        days=14,
-        augment_history=False,
-        backfill_missing_from_cache=True,
-    )
+    with pytest.raises(update_mod.RebuildRequired, match="MST 100 predates published MST 300"):
+        update_mod.update(days=14, augment_history=False, backfill_missing_from_cache=True)
 
     old_path = kr_dir / "테스트규칙" / "교육과학기술부령.md"
-    assert committed == 1
     assert current_path.read_text(encoding="utf-8") == current_content
     assert not old_path.exists()
-    assert subprocess.run(
+    assert not subprocess.run(
         ["git", "log", "--format=%B", "--grep=법령MST: 100"],
         cwd=repo,
         check=True,
         capture_output=True,
         text=True,
     ).stdout
-    assert subprocess.run(
-        ["git", "log", "-1", "--format=%s"],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip() == "chore(laws): 과거 이력 백필 후 최신 상태 복원"
     assert subprocess.run(
         ["git", "status", "--porcelain"],
         cwd=repo,

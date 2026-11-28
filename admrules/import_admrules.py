@@ -2,6 +2,8 @@
 
 import argparse
 import logging
+import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -20,6 +22,7 @@ from .converter import (
     xml_to_markdown,
 )
 from .git_engine import commit_admrule, commit_admrule_deletion
+from .snapshot import RebuildRequired
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +43,7 @@ def metadata_from_raw(raw_xml: bytes | str) -> dict:
         "담당부서기관명": _text(root, "담당부서기관명"),
         "발령번호": _text(root, "발령번호"),
         "발령일자": _text(root, "발령일자"),
+        "시행일자": _text(root, "시행일자"),
         "제개정구분": _text(root, "제개정구분명"),
         "제개정구분코드": _text(root, "제개정구분코드"),
         "현행연혁구분": _text(root, "현행연혁구분"),
@@ -55,17 +59,6 @@ def build_commit_msg(metadata: dict) -> str:
         "",
         f"행정규칙일련번호: {serial}",
         f"행정규칙ID: {metadata.get('행정규칙ID', '')}",
-    ])
-
-
-def build_non_current_deletion_msg(metadata: dict) -> str:
-    serial = str(metadata.get("행정규칙일련번호", ""))
-    return "\n".join([
-        f"비현행 제외: {metadata.get('행정규칙명', '')} ({metadata.get('발령번호', '')})",
-        "",
-        f"행정규칙일련번호: {serial}",
-        f"행정규칙ID: {metadata.get('행정규칙ID', '')}",
-        f"비현행 제외 행정규칙일련번호: {serial}",
     ])
 
 
@@ -95,19 +88,6 @@ def _remove_stale_path(repo_dir: Path, rel_path: str) -> bool:
     return True
 
 
-def _is_non_current_revision(metadata: dict) -> bool:
-    return str(metadata.get("현행여부", "")).strip().upper() == "N"
-
-
-def _mark_final_state_deletions(entries: list[dict]) -> None:
-    latest_by_identity: dict[str, dict] = {}
-    for entry in entries:
-        latest_by_identity[entry["identity"]] = entry
-    for entry in latest_by_identity.values():
-        if not entry["repeal"] and _is_non_current_revision(entry["metadata"]):
-            entry["delete_after_write"] = True
-
-
 def _frontmatter_from_markdown(path: Path) -> dict:
     try:
         text = path.read_text(encoding="utf-8")
@@ -122,16 +102,16 @@ def _frontmatter_from_markdown(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _current_paths_by_identity(repo_dir: Path) -> dict[str, str]:
-    paths: dict[str, str] = {}
-    if not repo_dir.exists():
-        return paths
+def _current_documents(repo_dir: Path) -> Iterator[tuple[str, str, dict]]:
     for path in repo_dir.rglob("본문.md"):
         metadata = _frontmatter_from_markdown(path)
         identity = admrule_identity(metadata)
         if identity:
-            paths[identity] = path.relative_to(repo_dir).as_posix()
-    return paths
+            yield identity, path.relative_to(repo_dir).as_posix(), metadata
+
+
+def _current_paths_by_identity(repo_dir: Path) -> dict[str, str]:
+    return {identity: path for identity, path, _ in _current_documents(repo_dir)}
 
 
 def import_from_cache(
@@ -159,7 +139,6 @@ def import_from_cache(
                 "metadata": metadata,
                 "rel_path": rel_path,
                 "repeal": is_repeal_revision(metadata),
-                "delete_after_write": False,
                 "markdown": xml_to_markdown(raw),
             })
         except Exception:
@@ -167,32 +146,31 @@ def import_from_cache(
             counters["errors"] += 1
 
     entries = sorted(entries, key=_sort_key)
-    _mark_final_state_deletions(entries)
 
     latest_paths: dict[str, str] = _current_paths_by_identity(repo_dir) if commit else {}
     for entry in entries:
         try:
             metadata = entry["metadata"]
             rel_path = entry["rel_path"]
+            previous_path = latest_paths.get(entry["identity"])
+            if previous_path:
+                previous = _frontmatter_from_markdown(repo_dir / previous_path)
+                if _sort_key({"metadata": previous, "rel_path": previous_path})[:2] > _sort_key(entry)[:2]:
+                    raise RebuildRequired(f"Administrative rule rebuild required: revision {entry['serial']} "
+                                          f"predates the published revision at {previous_path}")
             if entry["repeal"]:
                 previous_path = latest_paths.pop(entry["identity"], None)
-                if previous_path and _remove_stale_path(repo_dir, previous_path):
+                deleted_path = previous_path if previous_path and _remove_stale_path(repo_dir, previous_path) else None
+                if deleted_path:
                     counters["deleted"] += 1
-                    if commit:
-                        date = format_date(metadata.get("발령일자", "")) or "2000-01-01"
-                        if commit_admrule_deletion(
-                            repo_dir,
-                            previous_path,
-                            build_commit_msg(metadata),
-                            date,
-                            entry["serial"],
-                            skip_dedup=skip_dedup,
-                        ):
-                            counters["committed"] += 1
+                if commit:
+                    date = format_date(metadata.get("발령일자", "")) or "2000-01-01"
+                    if commit_admrule_deletion(repo_dir, deleted_path, build_commit_msg(metadata), date,
+                                               entry["serial"], skip_dedup=skip_dedup):
+                        counters["committed"] += 1
                 continue
 
             stale_paths = []
-            previous_path = latest_paths.get(entry["identity"])
             if previous_path and previous_path != rel_path and _remove_stale_path(repo_dir, previous_path):
                 stale_paths.append(previous_path)
             latest_paths[entry["identity"]] = rel_path
@@ -213,22 +191,8 @@ def import_from_cache(
                 ):
                     counters["committed"] += 1
 
-            if entry["delete_after_write"] and _remove_stale_path(repo_dir, rel_path):
-                counters["deleted"] += 1
-                latest_paths.pop(entry["identity"], None)
-                if commit:
-                    date = format_date(metadata.get("발령일자", "")) or "2000-01-01"
-                    serial = str(metadata.get("행정규칙일련번호", ""))
-                    if commit_admrule_deletion(
-                        repo_dir,
-                        rel_path,
-                        build_non_current_deletion_msg(metadata),
-                        date,
-                        entry["serial"],
-                        skip_dedup=skip_dedup,
-                        dedup_grep_key=f"비현행 제외 행정규칙일련번호: {serial}",
-                    ):
-                        counters["committed"] += 1
+        except RebuildRequired:
+            raise
         except Exception:
             logger.exception("Failed importing admrule serial=%s", entry["serial"])
             counters["errors"] += 1
@@ -245,7 +209,13 @@ def main() -> None:
     if args.limit is None:
         from .snapshot import validate_snapshot_inputs
 
-        validate_snapshot_inputs()
+        validate_snapshot_inputs(require_snapshot=args.commit)
+        if args.commit:
+            if not (args.repo / ".git").exists():
+                parser.error("initialize a fresh Git repository before rebuilding administrative rules")
+            if subprocess.run(["git", "-C", str(args.repo), "rev-parse", "--verify", "HEAD"],
+                              capture_output=True).returncode == 0:
+                parser.error("full administrative rule rebuild requires a fresh Git repository")
     stats = import_from_cache(args.repo, limit=args.limit, commit=args.commit)
     if args.limit is None and not stats["errors"]:
         from .snapshot import reconcile_current_snapshot

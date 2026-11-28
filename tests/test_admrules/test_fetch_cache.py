@@ -211,13 +211,14 @@ def test_fetch_detail_task_skips_allowlisted_upstream_failure(tmp_path, monkeypa
     assert counter.snapshot_all()["known_failures"] == 1
 
 
-def test_main_prunes_stale_cache_on_full_history_run(monkeypatch):
+def test_main_prunes_stale_cache_on_full_history_run(monkeypatch, tmp_path):
     from admrules import snapshot
 
-    monkeypatch.setattr(snapshot, "write_current_snapshot", lambda entries, **kwargs: {})
+    selection = Mock()
+    monkeypatch.setattr(snapshot, "write_current_snapshot", selection)
     pruned = []
 
-    monkeypatch.setattr(sys, "argv", ["admrules.fetch_cache", "--skip-quota-check"])
+    monkeypatch.setattr(sys, "argv", ["admrules.fetch_cache", "--skip-quota-check", "--published-repo", str(tmp_path)])
     monkeypatch.setattr(fetch_cache, "fetch_all_current", lambda **kwargs: [
         {"행정규칙일련번호": "keep"},
     ])
@@ -226,6 +227,7 @@ def test_main_prunes_stale_cache_on_full_history_run(monkeypatch):
 
     fetch_cache.main()
 
+    assert selection.call_args.kwargs["repo"] == tmp_path
     assert pruned == [{"keep"}]
 
 

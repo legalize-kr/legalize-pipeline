@@ -174,22 +174,24 @@ def import_from_cache(
     if not entries:
         return counters
 
-    committed_serials = committed_metadata(repo_dir)[0] if commit and not skip_dedup else set()
+    committed_serials, published_versions = committed_metadata(repo_dir) if commit else (set(), {})
     for entry in sorted(entries, key=_sort_key):
         try:
-            if entry["serial"] in committed_serials:
+            if not skip_dedup and entry["serial"] in committed_serials:
                 counters["skipped"] += 1
                 continue
             meta = entry["metadata"]
             rel_path = entry["rel_path"]
             previous_path = latest_paths.get(entry["identity"])
+            published = published_versions.get(entry["identity"])
             if commit and previous_path:
                 current = _frontmatter_from_markdown(repo_dir / previous_path)
-                if _sort_key({"metadata": current, "rel_path": previous_path}) > _sort_key(entry):
-                    raise ValueError(
-                        f"Older revision {entry['serial']} would replace a newer ordinance; "
-                        "rebuild its history in an isolated repository before publication"
-                    )
+                published = _sort_key({"metadata": current, "rel_path": previous_path})[:2]
+            if published and published > _sort_key(entry)[:2]:
+                raise ValueError(
+                    f"Older revision {entry['serial']} would replace a newer ordinance; "
+                    "rebuild its history in an isolated repository before publication"
+                )
             if entry["repeal"]:
                 previous_path = latest_paths.pop(entry["identity"], None)
                 deleted_path = previous_path if previous_path and _remove_stale_path(repo_dir, previous_path) else None

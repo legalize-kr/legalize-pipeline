@@ -3,6 +3,7 @@
 import argparse
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from xml.etree import ElementTree
 
 from core.counter import Counter
@@ -153,6 +154,7 @@ def main() -> None:
     parser.add_argument("--knd", action="append", choices=sorted(ADMRULE_TYPES), help="Optional 행정규칙종류 code 1..8. Repeatable; omitted means all types.")
     parser.add_argument("--org", default="", help="Optional law.go.kr org code filter")
     parser.add_argument("--limit", type=int, help="Limit detail fetches for testing")
+    parser.add_argument("--published-repo", type=Path, help="Compare selected documents with this published checkout")
     parser.add_argument("--workers", type=int, default=CONCURRENT_WORKERS)
     parser.add_argument("--skip-quota-check", action="store_true")
     args = parser.parse_args()
@@ -181,7 +183,7 @@ def main() -> None:
     if full_run:
         from .snapshot import write_current_snapshot
 
-        write_current_snapshot(current, history_entries=entries)
+        write_current_snapshot(current, history_entries=entries, repo=args.published_repo, workers=args.workers)
         prune_stale_cache(entries + current)
 
 

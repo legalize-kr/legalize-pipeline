@@ -104,7 +104,7 @@ def test_committed_metadata_reads_git_history_once(tmp_path, monkeypatch):
 
     class Result:
         returncode = 0
-        stdout = "자치법규ID: 1\n자치법규일련번호: 10\n자치법규ID: 2\n자치법규일련번호: 20\n"
+        stdout = "2026-01-02\n자치법규ID: 1\n자치법규일련번호: 10\n\x002026-01-03\n자치법규ID: 2\n자치법규일련번호: 20\n"
 
     monkeypatch.setattr(
         git_engine.subprocess,
@@ -115,7 +115,7 @@ def test_committed_metadata_reads_git_history_once(tmp_path, monkeypatch):
     serials, identities = update._committed_metadata(tmp_path)
 
     assert serials == {"10", "20"}
-    assert identities == {"1", "2"}
+    assert identities == {"1": ("2026-01-02", 10), "2": ("2026-01-03", 20)}
     assert len(calls) == 1
 
 
@@ -314,6 +314,27 @@ def test_retry_of_older_revision_does_not_overwrite_newer_revision(tmp_path, mon
     with pytest.raises(SystemExit, match="errors=1"):
         update.main()
     assert current.read_bytes() == before
+
+
+def test_daily_backfill_cannot_resurrect_repealed_ordinance(tmp_path, monkeypatch):
+    import subprocess
+    from ordinances import cache
+    from ordinances.import_ordinances import import_from_cache
+    from tests.test_ordinances.test_converter import SAMPLE_XML
+
+    repo = _prepare_update(tmp_path, monkeypatch)
+    repeal = SAMPLE_XML.replace("12345", "12346").replace("일부개정", "폐지")
+    cache.put_detail("12346", repeal.encode(), historical=True)
+    assert import_from_cache(repo, commit=True, serials=["12346"])["committed"] == 1
+    head = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"])
+    stats = update.run(repo=repo, commit=True)
+    assert stats["errors"] == stats["missing"] == 1
+    assert not list(repo.rglob("본문.md"))
+    assert head == subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"])
+
+    cache.put_detail("12347", SAMPLE_XML.replace("12345", "12347").encode(), historical=True)
+    assert import_from_cache(repo, commit=True, serials=["12347"])["committed"] == 1
+    assert "12347" in next(repo.rglob("본문.md")).read_text()
 
 
 def test_reimport_of_committed_old_revision_leaves_latest_tree_unchanged(tmp_path, monkeypatch):

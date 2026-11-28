@@ -68,8 +68,23 @@ def test_duplicate_current_source_through_daily_entrypoints(tmp_path, monkeypatc
         fetch_cache.main()
     else:
         subprocess.run(["git", "init", "-b", "main", str(repo)], check=True, capture_output=True)
-        monkeypatch.setattr(sys, "argv", ["admrules.update", "--repo", str(repo), "--workers", "1", "--days", "14", "--commit"])
-        update.main()
+        subprocess.run(["git", "-C", str(repo), "commit", "--allow-empty", "-m", "initial"], check=True, capture_output=True)
+        args = ["admrules.update", "--repo", str(repo), "--workers", "1", "--days", "14", "--commit"]
+        monkeypatch.setattr(sys, "argv", args)
+        if current_serial == "2100000241092":
+            from admrules import rebuild
+
+            with pytest.raises(SystemExit, match="rebuild required"):
+                update.main()
+            assert not list(repo.rglob("본문.md"))
+            repo = tmp_path / "rebuilt"
+            subprocess.run(["git", "init", "-b", "main", str(repo)], check=True, capture_output=True)
+            monkeypatch.setattr(sys, "argv", ["admrules.rebuild", "--repo", str(repo), "--commit"])
+            rebuild.main()
+            args[2] = str(repo)
+            monkeypatch.setattr(sys, "argv", args)
+        else:
+            update.main()
 
     selection = snapshot.load_current_snapshot()
     assert selection["rules"] == {"2088530": current_serial}

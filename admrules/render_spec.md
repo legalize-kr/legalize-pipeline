@@ -17,7 +17,7 @@ and the Rust `admrule-kr-compiler`.
   revision with repeal code `200404` or `200410` deletes the latest path for that
   identity instead of writing a replacement Markdown file. The deleted content
   remains in earlier Git commits. `200407` (`폐지제정`) writes the replacement body.
-- Full imports apply `current_snapshot.json` after the publication history.
+- Full rebuilds apply `current_snapshot.json` after the publication history.
   The pipeline selects `nw=1` rows marked `현행`, excluding explicit repeals.
   It also retains absent candidates after live detail confirmation of `현행여부=Y`.
   The snapshot records these source discrepancies in `supplemental`.
@@ -30,8 +30,10 @@ and the Rust `admrule-kr-compiler`.
   Numeric headings and item markers recognize Unicode decimal digits.
   This selection overrides cached `현행여부` when choosing the final tree.
   The raw XML and its rendered metadata remain unchanged.
-  Snapshot corrections use `observed_on` as their commit date.
-  Without this file, legacy cached-status selection remains available for old caches and test fixtures.
+  A rebuild records any difference from the publication tip in a single commit dated `observed_on`.
+  A daily update verifies the tree against the same selection before fast-forwarding its branch.
+  Full Git rebuilds require the selection file. A limited historical probe retains the latest publication, including revisions marked `현행여부=N`.
+  A non-current flag supplies no repeal date and never creates a separate deletion in publication history.
 - `기관경로` is based on normalized `상위부처명`, `소관부처명`, and
   `담당부서기관명`, then corrected with legal parent relationships from
   `정부조직법` and agency-specific installation laws. If the resolved agency has

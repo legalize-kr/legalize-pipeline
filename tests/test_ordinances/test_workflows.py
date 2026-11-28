@@ -66,6 +66,15 @@ def test_daily_ordinance_update_still_updates_validates_and_pushes():
     assert "git log origin/main..HEAD --oneline" in text
 
 
+def test_limited_administrative_and_ordinance_probes_cannot_push():
+    for dataset in ("admrule", "ordinance"):
+        path = Path(f".github/workflows/daily-{dataset}-update.yml")
+        workflow = yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        steps = workflow["jobs"]["update"]["steps"]
+        push = next(step for step in steps if "git push" in step.get("run", ""))
+        assert push["if"] == "${{ inputs.limit == '' }}"
+
+
 def test_weekly_cache_release_includes_nested_ordinance_history():
     text = Path(".github/workflows/weekly-cache-release.yml").read_text(encoding="utf-8")
 

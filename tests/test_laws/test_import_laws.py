@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import laws.import_laws as import_laws
+from laws import git_engine
 from laws.converter import reset_path_registry
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
@@ -16,6 +17,7 @@ def patch_dirs(tmp_path: Path, monkeypatch):
     kr_dir = tmp_path / "kr"
     kr_dir.mkdir()
     monkeypatch.setattr(import_laws, "KR_DIR", kr_dir)
+    monkeypatch.setattr(git_engine, "LAW_REPO", tmp_path)
     import laws.config as lconf
     monkeypatch.setattr(lconf, "KR_DIR", kr_dir)
     reset_path_registry()

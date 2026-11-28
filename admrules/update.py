@@ -5,13 +5,14 @@ import logging
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from core.github_actions import report_partial_fetch
 
 from .config import ADMRULE_REPO, CONCURRENT_WORKERS
 from .fetch_cache import fetch_all_current, fetch_details
 from .import_admrules import import_from_cache
-from .snapshot import reconcile_current_snapshot, write_current_snapshot
+from .snapshot import RebuildRequired, reconcile_current_snapshot, require_current_snapshot, write_current_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,35 @@ def _committed_serials(repo: Path) -> set[str]:
     }
 
 
+def _publish_incremental(repo: Path, serials: list[str], selection: dict) -> dict[str, int]:
+    def git(*args, check=True):
+        return subprocess.run(["git", "-C", str(repo), *args], check=check, capture_output=True)
+
+    if git("status", "--porcelain=v1").stdout:
+        raise RuntimeError("Administrative rule update requires a clean worktree")
+    base = git("rev-parse", "--verify", "HEAD", check=False)
+    if base.returncode:
+        raise RebuildRequired("Administrative rule rebuild required: daily updates require an existing HEAD")
+    if not serials:
+        require_current_snapshot(repo, selection)
+        return import_from_cache(repo, serials=[])
+    with TemporaryDirectory(prefix="admrule-update-") as temporary:
+        candidate = Path(temporary) / "candidate"
+        git("worktree", "add", "--detach", str(candidate), base.stdout.decode().strip())
+        try:
+            stats = import_from_cache(candidate, commit=True, serials=serials, skip_dedup=True)
+            if not stats["errors"]:
+                require_current_snapshot(candidate, selection)
+                if git("rev-parse", "HEAD").stdout != base.stdout:
+                    raise RuntimeError("Administrative rule branch changed during update")
+                head = subprocess.check_output(["git", "-C", str(candidate), "rev-parse", "HEAD"])
+                if head != base.stdout:
+                    git("merge", "--ff-only", head.decode().strip())
+            return stats
+        finally:
+            git("worktree", "remove", "--force", str(candidate))
+
+
 def run(
     *,
     repo: Path = ADMRULE_REPO,
@@ -76,15 +106,13 @@ def run(
         raise RuntimeError(f"Incomplete administrative rule update: {fetch_errors} detail failures")
     if full_run:
         selection = write_current_snapshot(current, history_entries=entries, repo=repo, workers=workers)
-    import_stats = import_from_cache(
-        repo,
-        limit=None,
-        commit=commit,
-        serials=import_serials,
-        skip_dedup=commit,
-    )
-    if full_run and not import_stats.get("errors"):
-        import_stats.update(reconcile_current_snapshot(repo, commit=commit))
+    if full_run and commit:
+        import_stats = _publish_incremental(repo, import_serials, selection)
+    else:
+        import_stats = import_from_cache(repo, limit=None, commit=commit, serials=import_serials, skip_dedup=commit)
+        if full_run and not import_stats["errors"]:
+            import_stats.update(reconcile_current_snapshot(repo))
+    if full_run:
         import_stats["snapshot_refetched"] = selection["refreshed_details"]
     stats = {
         "cached": cached,
@@ -107,15 +135,18 @@ def main() -> None:
     parser.add_argument("--days", type=int, default=14, help="Look back this many days for daily updates")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    stats = run(
-        repo=args.repo,
-        limit=args.limit,
-        workers=args.workers,
-        commit=args.commit,
-        knd=args.knd,
-        org=args.org,
-        days=args.days,
-    )
+    try:
+        stats = run(
+            repo=args.repo,
+            limit=args.limit,
+            workers=args.workers,
+            commit=args.commit,
+            knd=args.knd,
+            org=args.org,
+            days=args.days,
+        )
+    except RebuildRequired as exc:
+        raise SystemExit(str(exc)) from exc
     report_partial_fetch("Administrative rules", stats)
     if stats.get("errors"):
         raise SystemExit("Administrative rule import failed")

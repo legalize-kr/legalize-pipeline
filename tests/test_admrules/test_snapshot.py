@@ -12,11 +12,11 @@ from admrules.import_admrules import import_from_cache
 from admrules.validate import validate_current_snapshot, validate_frontmatter
 
 
-def detail(serial, *, name="금융감독원 규정", kind="세칙", status="Y", issue="20240101", amendment="제정", code="200401"):
+def detail(serial, *, name="금융감독원 규정", kind="세칙", status="Y", issue="20240101", effective="", amendment="제정", code="200401"):
     return f"""<AdmRulService><행정규칙ID>123</행정규칙ID>
 <행정규칙일련번호>{serial}</행정규칙일련번호><행정규칙명>{name}</행정규칙명>
 <행정규칙종류>{kind}</행정규칙종류><소관부처명>금융감독원</소관부처명>
-<발령일자>{issue}</발령일자><현행여부>{status}</현행여부>
+<발령일자>{issue}</발령일자><시행일자>{effective}</시행일자><현행여부>{status}</현행여부>
 <제개정구분명>{amendment}</제개정구분명><제개정구분코드>{code}</제개정구분코드>
 <조문내용>제1조 본문 {serial}</조문내용></AdmRulService>""".encode()
 
@@ -30,6 +30,16 @@ def init_repo(path):
     subprocess.run(["git", "init", "-b", "main", str(path)], check=True, capture_output=True)
     subprocess.run(["git", "-C", str(path), "config", "user.name", "Test"], check=True)
     subprocess.run(["git", "-C", str(path), "config", "user.email", "test@example.invalid"], check=True)
+
+
+def rebuild_repo(repo, monkeypatch):
+    import sys
+
+    from admrules import rebuild
+
+    init_repo(repo)
+    monkeypatch.setattr(sys, "argv", ["admrules.rebuild", "--repo", str(repo), "--commit"])
+    rebuild.main()
 
 
 @pytest.mark.parametrize("kind", ["세칙", "규정", "등기예규", "가족관계등록예규", "매뉴얼"])
@@ -58,16 +68,31 @@ def test_repeal_reenact_writes_body(tmp_path, monkeypatch):
     assert len(list((tmp_path / "out").rglob("본문.md"))) == 1
 
 
+def test_repeal_without_predecessor_preserves_publication_in_git(tmp_path, monkeypatch):
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "cache")
+    cache.put_detail("1", detail("1", status="N", amendment="폐지", code="200404"))
+    repo = tmp_path / "out"
+    init_repo(repo)
+
+    assert import_from_cache(repo, commit=True)["committed"] == 1
+    assert import_from_cache(repo, commit=True)["committed"] == 0
+    assert not list(repo.rglob("본문.md"))
+    message = subprocess.check_output(["git", "-C", str(repo), "log", "-1", "--format=%B"], text=True)
+    assert "행정규칙일련번호: 1" in message
+
+
 def test_future_revision_stays_in_history_and_current_body_is_restored(tmp_path, monkeypatch):
     monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(fetch_cache, "record_requests", lambda *args, **kwargs: None)
     monkeypatch.setattr(fetch_cache.checkpoint, "mark_detail_processed", lambda *args: None)
     cache.put_detail("1", detail("1"))
-    cache.put_detail("2", detail("2", name="새 규정", status="N", issue="20260201"))
+    cache.put_detail("2", detail("2", name="새 규정", status="N", issue="20260201", effective="20990101"))
     snapshot.write_current_snapshot([source_row("1"), source_row("2", 현행연혁구분="연혁")])
     repo = tmp_path / "out"
     init_repo(repo)
     assert import_from_cache(repo, commit=True)["errors"] == 0
+    assert "본문 2" in next(repo.rglob("본문.md")).read_text()
+    assert subprocess.check_output(["git", "-C", str(repo), "rev-list", "--count", "HEAD"], text=True).strip() == "2"
     snapshot.reconcile_current_snapshot(repo, commit=True)
     files = list(repo.rglob("본문.md"))
     assert len(files) == 1 and "본문 1" in files[0].read_text()
@@ -82,10 +107,108 @@ def test_future_revision_stays_in_history_and_current_body_is_restored(tmp_path,
     monkeypatch.setattr(api_client, "get_admrule_detail", lambda serial, **kwargs: cache.get_detail(serial))
     monkeypatch.setattr(update, "fetch_all_current", lambda **kwargs: [source_row("2")] if kwargs.get("history") is False else [])
     monkeypatch.setattr(fetch_cache, "get_admrule_detail", lambda serial, **kwargs: cache.get_detail(serial))
-    result = update.run(repo=repo, commit=True)
-    assert result["snapshot_written"] == 1
-    files = list(repo.rglob("본문.md"))
+    with pytest.raises(snapshot.RebuildRequired, match="rebuild required"):
+        update.run(repo=repo, commit=True)
+    assert "본문 1" in files[0].read_text()
+    rebuilt = tmp_path / "rebuilt"
+    rebuild_repo(rebuilt, monkeypatch)
+    files = list(rebuilt.rglob("본문.md"))
     assert len(files) == 1 and "본문 2" in files[0].read_text()
+
+
+@pytest.mark.parametrize("scenario,expected", [
+    ("stale_current_list", "2"),
+    ("outside_lookback", "2"),
+    ("withdrawn", "1"),
+    ("newer_noncurrent", "1"),
+    ("future_effective", "1"),
+    ("multiple_live_current", None),
+    ("unknown_live_status", None),
+    ("no_live_current", None),
+])
+def test_daily_rechecks_older_snapshot_selection(tmp_path, monkeypatch, scenario, expected):
+    from types import SimpleNamespace
+
+    from admrules import api_client
+
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(fetch_cache, "record_requests", lambda *args, **kwargs: None)
+    older = detail("1")
+    newer = detail("2", issue="20240201", effective="20240201")
+    cache.put_detail("1", older)
+    snapshot.write_current_snapshot([source_row("1")], history_entries=[])
+    if scenario == "future_effective":
+        newer = detail("2", issue="20240201", effective="20990101", status="N")
+    cache.put_detail("2", newer)
+    repo = tmp_path / "out"
+    init_repo(repo)
+    published = ["1"] if scenario == "future_effective" else ["1", "2"]
+    assert import_from_cache(repo, serials=published, commit=True)["committed"] == len(published)
+    path = next(repo.rglob("본문.md"))
+    before = path.read_bytes()
+    manifest = cache.CACHE_DIR / snapshot.SNAPSHOT_NAME
+    before_manifest = manifest.read_bytes()
+    head = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"])
+    history = [source_row("2", 발령일자="20240201", 시행일자="20240201")]
+    if scenario in {"outside_lookback", "withdrawn"}:
+        history = []
+    if scenario == "future_effective":
+        history = [source_row("2", 발령일자="20240201", 시행일자="20990101", 현행연혁구분="연혁")]
+
+    responses = {
+        "1": detail("1", status="N") if expected == "2" or scenario == "no_live_current" else older,
+        "2": {
+            "withdrawn": "<Law>일치하는 행정규칙이 없습니다.</Law>".encode(),
+            "unknown_live_status": detail("2", issue="20240201", effective="20240201", status=""),
+            "newer_noncurrent": detail("2", issue="20240201", effective="20240201", status="N"),
+            "no_live_current": detail("2", issue="20240201", effective="20240201", status="N"),
+        }.get(scenario, newer),
+    }
+    requests = []
+
+    def request(url, params):
+        assert url.endswith("/lawService.do")
+        serial = params["ID"]
+        requests.append(serial)
+        return SimpleNamespace(content=responses[serial])
+
+    monkeypatch.setattr(api_client, "_request", request)
+    monkeypatch.setattr(update, "fetch_all_current", lambda **kwargs: [source_row("1")]
+                        if kwargs.get("history") is False else history)
+
+    if expected is None:
+        with pytest.raises(RuntimeError, match="Current admrule revision conflict"):
+            update.run(repo=repo, workers=1, commit=True)
+        assert manifest.read_bytes() == before_manifest
+        assert path.read_bytes() == before
+        assert subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"]) == head
+        return
+
+    if expected == "1":
+        with pytest.raises(snapshot.RebuildRequired, match="rebuild required"):
+            update.run(repo=repo, workers=1, commit=True)
+        assert path.read_bytes() == before
+        assert subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"]) == head
+        repo = tmp_path / "rebuilt"
+        rebuild_repo(repo, monkeypatch)
+        path = next(repo.rglob("본문.md"))
+    else:
+        update.run(repo=repo, workers=1, commit=True)
+    selection = snapshot.load_current_snapshot()
+    assert selection["rules"] == {"123": expected}
+    assert f"본문 {expected}" in path.read_text()
+    assert validate_current_snapshot(repo, manifest) == []
+    if expected == "2":
+        assert {"1", "2"} <= set(requests)
+        assert selection["conflicts"] == [{"id": "123", "serial": "2", "listed_serial": "1",
+                                           "reason": "older_current_list_revision"}]
+        assert subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"]) == head
+    elif scenario == "withdrawn":
+        assert {"1", "2"} <= set(requests)
+        assert selection["excluded"] == [{"id": "123", "serial": "2", "reason": "live_detail_no_result"}]
+        assert cache.get_detail("2") == newer
+        update.run(repo=repo, workers=1, commit=True)
+        assert snapshot.load_current_snapshot()["excluded"] == selection["excluded"]
 
 
 def test_missing_detail_does_not_replace_snapshot_or_modify_repo(tmp_path, monkeypatch):
@@ -212,7 +335,11 @@ def test_absent_rule_no_result_excludes_current_but_preserves_history(tmp_path, 
     monkeypatch.setattr(fetch_cache, "fetch_all_current", lambda **kwargs: rows)
     monkeypatch.setattr(update, "fetch_all_current", lambda **kwargs: rows)
     if entrypoint == "update":
-        assert update.run(repo=repo, commit=True)["snapshot_deleted"] == 1
+        with pytest.raises(snapshot.RebuildRequired, match="rebuild required"):
+            update.run(repo=repo, commit=True)
+        assert len(list(repo.rglob("본문.md"))) == 2
+        repo = tmp_path / "rebuilt"
+        rebuild_repo(repo, monkeypatch)
     else:
         monkeypatch.setattr(sys, "argv", ["admrules.fetch_cache", "--skip-quota-check"])
         fetch_cache.main()
@@ -265,6 +392,33 @@ def test_current_list_no_result_still_preserves_previous_snapshot(tmp_path, monk
     assert cache.get_detail("1") == wrong_identity
 
 
+@pytest.mark.parametrize("corroborated", [False, True])
+def test_missing_id_is_excluded_only_when_live_detail_has_a_supported_reassignment(tmp_path, monkeypatch, corroborated):
+    from types import SimpleNamespace
+
+    from admrules import api_client
+
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "cache")
+    cache.put_detail("1", detail("1"))
+    cache.put_detail("2", detail("2").replace(b">123<", b">456<"))
+    snapshot.write_current_snapshot([source_row("1"), source_row("2", 행정규칙ID="456")])
+    manifest = cache.CACHE_DIR / snapshot.SNAPSHOT_NAME
+    before = manifest.read_bytes()
+    new_identity = b"123" if corroborated else b"789"
+    live = detail("2", status="N").replace(b">123<", b">" + new_identity + b"<")
+    monkeypatch.setattr(api_client, "_request", lambda *args: SimpleNamespace(content=live))
+    if not corroborated:
+        with pytest.raises(RuntimeError, match="Supplemental admrule identity mismatch"):
+            snapshot.write_current_snapshot([source_row("1")], history_entries=[])
+        assert manifest.read_bytes() == before
+        return
+    selection = snapshot.write_current_snapshot([source_row("1")], history_entries=[])
+    assert selection["rules"] == {"123": "1"}
+    assert selection["excluded"] == [{"id": "456", "serial": "2", "reason": "live_detail_identity_reassigned",
+                                      "live_id": "123"}]
+    assert cache.get_detail("2") == live
+
+
 @pytest.mark.parametrize("entrypoint", ["update", "import"])
 def test_archive_only_revision_does_not_skip_main_import(tmp_path, monkeypatch, entrypoint):
     monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "cache")
@@ -300,6 +454,35 @@ def test_full_import_cli_rejects_bad_snapshot_before_writing(tmp_path, monkeypat
     with pytest.raises(RuntimeError, match="Missing snapshot"):
         import_admrules.main()
     assert not repo.exists()
+
+
+def test_full_git_rebuild_requires_selection_before_recording_history(tmp_path, monkeypatch):
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "cache")
+    cache.put_detail("1", detail("1", status="N"))
+    repo = tmp_path / "rebuilt"
+    with pytest.raises(RuntimeError, match="current_snapshot.json"):
+        rebuild_repo(repo, monkeypatch)
+    assert not list(repo.rglob("본문.md"))
+    assert subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "HEAD"], capture_output=True).returncode
+
+
+def test_full_import_cli_refuses_existing_history(tmp_path, monkeypatch):
+    import sys
+
+    from admrules import rebuild
+
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "cache")
+    cache.put_detail("1", detail("1"))
+    snapshot.write_current_snapshot([source_row("1")])
+    repo = tmp_path / "out"
+    init_repo(repo)
+    import_from_cache(repo, commit=True)
+    head = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"])
+    monkeypatch.setattr(sys, "argv", ["admrules.rebuild", "--repo", str(repo), "--commit"])
+    with pytest.raises(SystemExit, match="2"):
+        rebuild.main()
+    assert subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"]) == head
+    assert not subprocess.check_output(["git", "-C", str(repo), "status", "--porcelain"])
 
 
 @pytest.mark.parametrize("rows", [[], [source_row("1"), source_row("1")]])
@@ -372,7 +555,8 @@ def test_snapshot_path_swap_preserves_both_identities(tmp_path, monkeypatch):
     cache.put_detail("4", detail("4", name="규칙 A", issue="20250101").replace(b">123<", b">456<"))
     snapshot.write_current_snapshot([source_row("3"), source_row("4", 행정규칙ID="456")])
     result = snapshot.reconcile_current_snapshot(repo, commit=True)
-    assert result == {"snapshot_written": 2, "snapshot_deleted": 2, "snapshot_committed": 4}
+    assert result == {"snapshot_written": 2, "snapshot_deleted": 2, "snapshot_committed": 1}
+    assert subprocess.check_output(["git", "-C", str(repo), "log", "-1", "--format=%s"], text=True).strip() == "build(admrules): 현행 트리 생성"
     assert validate_current_snapshot(repo, cache.CACHE_DIR / snapshot.SNAPSHOT_NAME) == []
     assert snapshot.reconcile_current_snapshot(repo, commit=True)["snapshot_committed"] == 0
 
@@ -397,7 +581,7 @@ def test_daily_rechecks_changed_cached_y_against_live_detail(tmp_path, monkeypat
     result = update.run(repo=repo, commit=True, workers=1)
     assert len(calls) == 1
     assert cache.get_detail('1') == fresh
-    assert result['snapshot_written'] == result['snapshot_deleted'] == result['snapshot_committed'] == 0
+    assert result['committed'] == 0
     assert subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD']) == before
 
 
@@ -430,7 +614,7 @@ def test_daily_refetch_failure_preserves_published_tree_and_selection(tmp_path, 
     assert (cache.CACHE_DIR / snapshot.SNAPSHOT_NAME).read_bytes() == selection
 
 
-def test_live_same_serial_correction_is_applied_once(tmp_path, monkeypatch):
+def test_live_same_serial_correction_requires_rebuild(tmp_path, monkeypatch):
     from admrules import api_client
     from types import SimpleNamespace
     monkeypatch.setattr(cache, 'CACHE_DIR', tmp_path / 'cache')
@@ -445,12 +629,14 @@ def test_live_same_serial_correction_is_applied_once(tmp_path, monkeypatch):
     monkeypatch.setattr(update, 'fetch_all_current', lambda **kw: [source_row('1')] if kw.get('history') is False else [])
     calls = []
     monkeypatch.setattr(api_client, '_request', lambda url, params: calls.append(params) or SimpleNamespace(content=fresh))
-    first = update.run(repo=repo, commit=True)
-    assert first['snapshot_written'] == first['snapshot_deleted'] == 1
-    assert first['snapshot_refetched'] == 1
+    with pytest.raises(snapshot.RebuildRequired, match="rebuild required"):
+        update.run(repo=repo, commit=True)
+    assert '본문 1' in next(repo.rglob('본문.md')).read_text()
+    repo = tmp_path / "rebuilt"
+    rebuild_repo(repo, monkeypatch)
     assert '정정 본문' in next(repo.rglob('본문.md')).read_text()
     second = update.run(repo=repo, commit=True)
-    assert second['snapshot_written'] == second['snapshot_deleted'] == second['snapshot_committed'] == 0
+    assert second['committed'] == 0
     assert second['snapshot_refetched'] == 0 and len(calls) == 1
 
 
@@ -488,8 +674,10 @@ def test_live_attachment_only_rule_preserves_original_file_links(tmp_path, monke
     cache.put_detail('1', fresh)
     monkeypatch.setattr(update, 'fetch_all_current', lambda **kw: [source_row('1')] if kw.get('history') is False else [])
     monkeypatch.setattr(api_client, '_request', lambda url, params: SimpleNamespace(content=fresh))
-    result = update.run(repo=repo, workers=1, commit=True)
-    assert result['snapshot_written'] == 1 and result['snapshot_refetched'] == 1
+    with pytest.raises(snapshot.RebuildRequired, match="rebuild required"):
+        update.run(repo=repo, workers=1, commit=True)
+    repo = tmp_path / "rebuilt"
+    rebuild_repo(repo, monkeypatch)
     path = next(repo.rglob('본문.md'))
     text = path.read_text()
     assert "본문출처: 'attachment-only'" in text and 'parsing-failed' not in text

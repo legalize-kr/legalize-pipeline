@@ -1,5 +1,6 @@
 """Ordinance-specific shim for shared historical-date commits."""
 
+import datetime
 import subprocess
 from pathlib import Path
 
@@ -47,24 +48,40 @@ def commit_ordinance_deletion(
     )
 
 
-def committed_metadata(repo: Path) -> tuple[set[str], set[str]]:
+def committed_metadata(repo: Path) -> tuple[set[str], dict[str, tuple[str, int]]]:
     if not (repo / ".git").exists():
-        return set(), set()
+        return set(), {}
     result = subprocess.run(
-        ["git", "log", "HEAD", "--format=%B"],
+        ["git", "log", "-z", "HEAD", "--format=%as%n%B"],
         cwd=repo,
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
-        return set(), set()
+        return set(), {}
     serial_prefix = "자치법규일련번호: "
     identity_prefix = "자치법규ID: "
     serials = set()
-    identities = set()
-    for line in result.stdout.splitlines():
-        if line.startswith(serial_prefix) and line[len(serial_prefix):].strip():
-            serials.add(line[len(serial_prefix):].strip())
-        elif line.startswith(identity_prefix) and line[len(identity_prefix):].strip():
-            identities.add(line[len(identity_prefix):].strip())
-    return serials, identities
+    latest = {}
+    for record in result.stdout.split("\0"):
+        date, _, message = record.partition("\n")
+        identity = serial = ""
+        for line in message.splitlines():
+            if line.startswith("공포일자: ") and line[6:].strip():
+                source_date = line[6:].strip()
+                try:
+                    date = datetime.date.fromisoformat(source_date).isoformat()
+                except ValueError:
+                    pass
+            elif line.startswith(identity_prefix) and not identity:
+                identity = line[len(identity_prefix):].strip()
+            elif line.startswith(serial_prefix) and not serial:
+                serial = line[len(serial_prefix):].strip()
+            if identity and serial:
+                break
+        if serial:
+            serials.add(serial)
+        if identity:
+            version = date, int(serial) if serial.isdecimal() else 2**63 - 1
+            latest[identity] = max(latest.get(identity, version), version)
+    return serials, latest

@@ -60,11 +60,20 @@ A no-result response for a listed current rule still stops the update.
 API errors or unexpected response roots stop this recheck without replacing the selection.
 `conflicts` records selected rows whose cached detail still says `N`. The selection preserves these rows instead of silently dropping them.
 The selection follows the API classification. It does not infer legal validity from an effective date alone.
+If the current list selects an older revision than the history list, previous snapshot, or published tree, the pipeline rechecks the competing details before saving a snapshot.
+A unique live current revision can replace the listed revision once its effective date has arrived.
+A newer revision that explicitly returns no result remains in cached history and is recorded in `excluded`.
+If an omitted ID's serial is now assigned to a different ID, the selection records the reassignment only when the live status agrees with the selected revision for that new ID.
+The older revision can stay current when the live details confirm that selection.
+An ambiguous result stops the update before replacing the snapshot.
+The pipeline records a corrected selection as `older_current_list_revision` in `conflicts`.
 
-The compiler and Python import preserve publication history, then reconcile the final tree with this selection.
-Snapshot corrections use the observation date and separate commit messages.
+Full rebuilds preserve publication history, then materialize this selection.
+If the final tree differs from the history tip, the rebuild records the complete adjustment in one commit dated on the observation day.
+A full Python rebuild with `--commit` requires a fresh Git repository.
+A repeal whose predecessor is absent still creates a publication commit, with no file changes.
 A future revision remains in history while the selected earlier revision remains in `HEAD`.
-Old caches without the snapshot retain the legacy final-state behavior. Refresh them before rebuilding current data.
+A full Git rebuild requires the snapshot. When only rendering old XML or running a limited probe, the output shows publication history. A cached `현행여부=N` is an observation about the revision, not a dated repeal. Only explicit repeal revisions delete a document during replay. Pass `--published-repo` to the full cache fetch to compare the selection and body with the existing checkout.
 Limited compiler probes do not apply the full snapshot.
 Full Python imports validate the snapshot and its selected details before they write files.
 Both implementations require a canonical `YYYY-MM-DD` observation date.
@@ -83,9 +92,11 @@ Before publication, daily updates compare each selected cached document with the
 If the text differs or the document is missing, they fetch the selected detail again, including cached `Y` records.
 A failed fetch or identity mismatch stops the update before publication.
 A lost body stops the update if the published document previously contained text or original document attachments.
-The update reports these extra detail requests as `snapshot_refetched`.
-They reconcile selected revisions even when their serials already occur in Git history.
-Partial updates do not replace or apply the global selection.
+The update reports the additional published-body detail checks as `snapshot_refetched`.
+The daily update tests new revisions in a detached worktree and fast-forwards only if the resulting files match the verified selection.
+If a historical backfill, activation, withdrawal, or correction requires a different tree, the daily update reports `rebuild required`.
+Validate and compare a fresh compiler output before replacing the published repository.
+Partial workflow probes cannot push and do not apply the global selection.
 Import deduplication reads the current branch history. An archive branch does not suppress a missing revision in `main`.
 
 After a full import, make sure that the files match the selection:

@@ -51,14 +51,14 @@ def create_orphan_branch(branch_name: str = "rebuild") -> None:
 
 def commit_infra(dry_run: bool = False, infra_date: str | None = None) -> str | None:
     """Commit all infrastructure files as a single commit."""
+    if dry_run:
+        logger.info("[DRY-RUN] Infra commit with %d paths", len(INFRA_PATHS))
+        return None
+
     for path in INFRA_PATHS:
         abs_path = LAW_REPO / path
         if abs_path.exists():
             _run_git("add", path)
-
-    if dry_run:
-        logger.info("[DRY-RUN] Infra commit with %d paths", len(INFRA_PATHS))
-        return None
 
     env = historical_commit_env(infra_date or DEFAULT_INFRA_DATE, author=INFRA_AUTHOR)
 
@@ -136,10 +136,8 @@ def load_and_sort_entries() -> list[tuple[str, dict]]:
 def rebuild_law_commits(entries: list[tuple[str, dict]], dry_run: bool = False) -> int:
     """Create one commit per law entry, oldest first.
 
-    Needs no VersionTracker (unlike update/import_from_cache): this replays
-    every cached version onto an orphan branch in canonical ascending order
-    with no dedup skip, so each file's newest version is always committed
-    last and HEAD cannot regress. Keep those two properties if editing.
+    Replay every cached version onto an orphan branch in canonical ascending
+    order. Each file's newest version is committed last.
     """
     planned_paths = plan_current_law_paths(entries)
     committed = 0
@@ -268,7 +266,7 @@ def main():
     else:
         total = _run_git("rev-list", "--count", "HEAD")
         logger.info(f"Rebuild complete: {total} total commits on branch '{args.branch}'")
-        logger.info(f"To finalize: git branch -M {args.branch} main && git push --force origin main")
+        logger.info("Compare the rebuilt tree and revision coverage with the published branch before replacing it.")
 
 
 if __name__ == "__main__":
