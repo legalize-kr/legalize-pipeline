@@ -34,6 +34,7 @@ VALID_FRONTMATTER = """\
 소관부처:
   - 법무부
 공포일자: 2024-01-01
+시행일자: 2024-07-01
 상태: 시행
 첨부파일: []
 ---
@@ -47,6 +48,12 @@ def test_validate_valid_file(tmp_path: Path):
     _write_md(path, VALID_FRONTMATTER)
     errors = validate_frontmatter(path)
     assert errors == []
+
+
+def test_enforcement_date_is_required_separately_from_promulgation(tmp_path: Path):
+    path = tmp_path / "kr" / "민법" / "법률.md"
+    _write_md(path, VALID_FRONTMATTER.replace("시행일자: 2024-07-01\n", ""))
+    assert "Missing required field: 시행일자" in validate_frontmatter(path)
 
 
 def test_validate_missing_fields(tmp_path: Path):
@@ -67,6 +74,7 @@ def test_validate_non_list_department(tmp_path: Path):
 법령구분코드: 법률
 소관부처: 법무부
 공포일자: 2024-01-01
+시행일자: 2024-07-01
 상태: 시행
 첨부파일: []
 ---
@@ -122,6 +130,7 @@ def test_validate_attachment_links(tmp_path: Path):
 소관부처:
   - 법무부
 공포일자: 2024-01-01
+시행일자: 2024-07-01
 상태: 시행
 첨부파일:
   - 별표번호: '0001'
@@ -147,6 +156,7 @@ def test_validate_rejects_bad_attachment_links(tmp_path: Path):
 소관부처:
   - 법무부
 공포일자: 2024-01-01
+시행일자: 2024-07-01
 상태: 시행
 첨부파일:
   - raw

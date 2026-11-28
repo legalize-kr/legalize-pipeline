@@ -10,8 +10,9 @@ from core.counter import Counter
 from core.quota_budget import ensure_headroom, record_requests
 
 from . import cache, checkpoint, detail_failure_allowlist
-from .api_client import get_admrule_detail, search_admrules
+from .api_client import NoResultError, get_admrule_detail, search_admrules
 from .config import ADMRULE_TYPES, CONCURRENT_WORKERS, VALID_ADMRULE_TYPES
+from .git_engine import committed_serials
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +142,18 @@ def fetch_details(entries: list[dict], workers: int = CONCURRENT_WORKERS, limit:
     return counter
 
 
+def recover_published_details(repo: Path, entries: list[dict]) -> None:
+    """Recover previously published XML no longer listed by the source."""
+    listed = {row["행정규칙일련번호"] for row in entries}
+    for serial in sorted(committed_serials(repo) - listed - set(cache.list_cached_serials())):
+        try:
+            get_admrule_detail(serial, refresh=True)
+        except NoResultError:
+            logger.warning("Published admrule %s has no source detail; retain the previous Git history", serial)
+        finally:
+            record_requests(1, corpus="admrules")
+
+
 def prune_stale_cache(entries: list[dict]) -> list[str]:
     serials = {str(entry.get("행정규칙일련번호", "")) for entry in entries if entry.get("행정규칙일련번호")}
     removed = cache.prune_details(serials)
@@ -183,6 +196,8 @@ def main() -> None:
     if full_run:
         from .snapshot import write_current_snapshot
 
+        if args.published_repo is not None:
+            recover_published_details(args.published_repo, entries + current)
         write_current_snapshot(current, history_entries=entries, repo=args.published_repo, workers=args.workers)
         prune_stale_cache(entries + current)
 

@@ -19,6 +19,10 @@ class _LawDumper(yaml.Dumper):
 
 
 _LawDumper.add_representer(
+    str,
+    lambda dumper, value: dumper.represent_scalar("tag:yaml.org,2002:str", value, style="|" if "\n" in value else None),
+)
+_LawDumper.add_representer(
     _QuotedStr,
     lambda dumper, value: dumper.represent_scalar(
         "tag:yaml.org,2002:str", value, style="'"
@@ -223,7 +227,11 @@ def build_frontmatter(metadata: dict, attachments: list[dict] | None = None) -> 
         "법령분야": metadata.get("법령분야", ""),
         "상태": "시행",
         "출처": f"https://www.law.go.kr/법령/{normalized_name.replace(' ', '')}",
-        "첨부파일": attachments or [],
+        "첨부파일": [
+            {key: _QuotedStr(value) if key in ("별표번호", "별표가지번호") and value.isdecimal() else value
+             for key, value in attachment.items()}
+            for attachment in attachments or []
+        ],
     }
 
     if normalized_name != raw_name:
@@ -397,6 +405,7 @@ def law_to_markdown(detail: dict) -> str:
     yaml_str = yaml.dump(
         frontmatter,
         Dumper=_LawDumper,
+        width=float("inf"),
         allow_unicode=True,
         default_flow_style=False,
         sort_keys=False,

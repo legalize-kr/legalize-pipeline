@@ -1,5 +1,6 @@
 """Tests for core/http.py."""
 
+import hashlib
 import importlib
 from unittest.mock import MagicMock
 
@@ -189,6 +190,7 @@ def test_make_request_maintenance_exhausts_retries_without_leaking_key(monkeypat
 
     assert len(responses_lib.calls) == len(attempts) == 3
     assert error.value.response.status_code == 200
+    assert f"sha256={hashlib.sha256(MAINTENANCE_HTML).hexdigest()}" in str(error.value)
     assert "private-test-key" not in str(error.value) + caplog.text
 
 

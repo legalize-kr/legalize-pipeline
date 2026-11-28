@@ -41,6 +41,14 @@ jobs:
           fetch-depth: 0
           path: LEGALIZE-KR-WORKSPACE-ROOT/legalize-kr
 
+      - name: Checkout published administrative rules
+        uses: actions/checkout@v6
+        with:
+          repository: legalize-kr/admrule-kr
+          fetch-depth: 0
+          filter: blob:none
+          path: LEGALIZE-KR-WORKSPACE-ROOT/admrule-kr
+
       - name: Checkout pipeline
         uses: actions/checkout@v6
         with:
@@ -115,7 +123,7 @@ jobs:
           LAW_OC: ${{ secrets.LAW_OC }}
         run: |
           . "$WORKSPACE_ROOT/.venv/bin/activate"
-          python -m admrules.fetch_cache
+          python -m admrules.fetch_cache --published-repo "$GITHUB_WORKSPACE/LEGALIZE-KR-WORKSPACE-ROOT/admrule-kr"
 
       - name: Fetch ordinances cache
         id: fetch_ordinances

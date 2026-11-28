@@ -16,6 +16,15 @@ def refresh_steps():
     return workflow['jobs']['refresh']['steps']
 
 
+def test_admrule_refresh_uses_published_history():
+    steps = refresh_steps()
+    checkout = next(step['with'] for step in steps
+                    if step.get('with', {}).get('repository') == 'legalize-kr/admrule-kr')
+    assert checkout['fetch-depth'] == '0'
+    fetch = next(step for step in steps if step.get('id') == 'fetch_admrules')
+    assert f'--published-repo "$GITHUB_WORKSPACE/{checkout["path"]}"' in fetch['run']
+
+
 @pytest.mark.parametrize('cache_exists,available,expected', [
     (False, 20_000_000_000, 1),
     (False, 24_999_999_999, 1),

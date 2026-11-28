@@ -518,17 +518,23 @@ entries:
     expires_on: "2026-10-31"
   - serial: "2000000002205"
     reason: "upstream_html_error_page"
-    expected_error: "unexpected admrule detail root tag"
+    expected_error:
+      - "unexpected admrule detail root tag"
+      - "sha256=5e894b1a9a47d0cafd4bc1d733b4faad931eba8be6f91f4ea47b45537f3cd55b"
     # Revalidated 2026-11-02; evidence: tests/fixtures/detail_failures_20261102.json
     expires_on: "2027-01-31"
   - serial: "2100000001014"
     reason: "upstream_html_error_page"
-    expected_error: "unexpected admrule detail root tag"
+    expected_error:
+      - "unexpected admrule detail root tag"
+      - "sha256=5e894b1a9a47d0cafd4bc1d733b4faad931eba8be6f91f4ea47b45537f3cd55b"
     # Revalidated 2026-11-02; evidence: tests/fixtures/detail_failures_20261102.json
     expires_on: "2027-01-31"
   - serial: "2100000001016"
     reason: "upstream_html_error_page"
-    expected_error: "unexpected admrule detail root tag"
+    expected_error:
+      - "unexpected admrule detail root tag"
+      - "sha256=5e894b1a9a47d0cafd4bc1d733b4faad931eba8be6f91f4ea47b45537f3cd55b"
     # Revalidated 2026-11-02; evidence: tests/fixtures/detail_failures_20261102.json
     expires_on: "2027-01-31"
   # Reproduced with the same HTTP 500 in Daily Cache Refresh runs

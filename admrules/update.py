@@ -11,6 +11,7 @@ from core.github_actions import report_partial_fetch
 
 from .config import ADMRULE_REPO, CONCURRENT_WORKERS
 from .fetch_cache import fetch_all_current, fetch_details
+from .git_engine import committed_serials as _committed_serials
 from .import_admrules import import_from_cache
 from .snapshot import RebuildRequired, reconcile_current_snapshot, require_current_snapshot, write_current_snapshot
 
@@ -32,25 +33,6 @@ def _current_serials(entries: list[dict], limit: int | None = None) -> list[str]
             seen.add(serial)
             serials.append(serial)
     return serials[:limit] if limit is not None else serials
-
-
-def _committed_serials(repo: Path) -> set[str]:
-    if not (repo / ".git").exists():
-        return set()
-    result = subprocess.run(
-        ["git", "log", "HEAD", "--format=%B"],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return set()
-    prefix = "행정규칙일련번호: "
-    return {
-        line[len(prefix):].strip()
-        for line in result.stdout.splitlines()
-        if line.startswith(prefix) and line[len(prefix):].strip()
-    }
 
 
 def _publish_incremental(repo: Path, serials: list[str], selection: dict) -> dict[str, int]:

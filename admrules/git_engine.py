@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 from core.config import BOT_AUTHOR
@@ -38,3 +39,21 @@ def commit_admrule_deletion(
         dedup_grep_key=key,
         allow_empty=file_path is None,
     )
+
+
+def committed_serials(repo: Path) -> set[str]:
+    if not (repo / ".git").exists():
+        raise ValueError(f"Expected a published administrative rule checkout at {repo}")
+    result = subprocess.run(
+        ["git", "log", "HEAD", "--format=%B"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    prefix = "행정규칙일련번호: "
+    return {
+        line[len(prefix):].strip()
+        for line in result.stdout.splitlines()
+        if line.startswith(prefix) and line[len(prefix):].strip()
+    }

@@ -72,6 +72,8 @@ Full rebuilds preserve publication history, then materialize this selection.
 If the final tree differs from the history tip, the rebuild records the complete adjustment in one commit dated on the observation day.
 A full Python rebuild with `--commit` requires a fresh Git repository.
 A repeal whose predecessor is absent still creates a publication commit, with no file changes.
+
+The daily cache refresh reads the published branch history and requests missing XML for previously published serials absent from the list. Recovered XML moves to `retired/` during pruning. Keep the previous Git tip under an archive ref to preserve historical revisions whose detail endpoint returns no result.
 A future revision remains in history while the selected earlier revision remains in `HEAD`.
 A full Git rebuild requires the snapshot. When only rendering old XML or running a limited probe, the output shows publication history. A cached `현행여부=N` is an observation about the revision, not a dated repeal. Only explicit repeal revisions delete a document during replay. Pass `--published-repo` to the full cache fetch to compare the selection and body with the existing checkout.
 Limited compiler probes do not apply the full snapshot.

@@ -23,7 +23,7 @@ from .converter import normalize_law_name
 
 logger = logging.getLogger(__name__)
 
-REQUIRED_FIELDS = ["제목", "법령MST", "법령구분", "법령구분코드", "소관부처", "공포일자", "상태", "첨부파일"]
+REQUIRED_FIELDS = ["제목", "법령MST", "법령구분", "법령구분코드", "소관부처", "공포일자", "시행일자", "상태", "첨부파일"]
 
 METADATA_FILE = LAW_REPO / "metadata.json"
 

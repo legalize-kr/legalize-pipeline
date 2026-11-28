@@ -723,10 +723,10 @@ def test_law_to_markdown_renders_attachments_in_frontmatter():
         addenda=[{"부칙내용": "이 법은 공포일부터 시행한다."}],
     )
     detail["attachments"] = [{
-        "별표번호": "0001",
+        "별표번호": "0008",
         "별표가지번호": "00",
         "별표구분": "별표",
-        "제목": "수수료",
+        "제목": "확인 서류 " * 25 + "목록",
         "파일링크": "https://www.law.go.kr/LSW/flDownload.do?flSeq=1",
     }]
 
@@ -734,7 +734,11 @@ def test_law_to_markdown_renders_attachments_in_frontmatter():
     yaml_text = result.split("---\n", 2)[1]
     fm = yaml.safe_load(yaml_text)
 
+    assert "- 별표번호: '0008'" in yaml_text
+    assert "  제목: " + detail["attachments"][0]["제목"] + "\n" in yaml_text
     assert fm["첨부파일"][0]["파일링크"].endswith("flSeq=1")
+    detail["attachments"][0]["제목"] = "신청 서류\n 확인 방법"
+    assert "  제목: |-\n    신청 서류\n     확인 방법\n" in law_to_markdown(detail)
 
 
 def test_law_to_markdown_articles_only_passes(sample_law_detail):

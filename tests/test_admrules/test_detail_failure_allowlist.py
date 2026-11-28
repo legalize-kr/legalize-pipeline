@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from pathlib import Path
 
@@ -147,3 +148,13 @@ def test_verified_no_result_exception_is_specific_and_expires():
     assert allowlist.accepted_entry("2100000287624", error, today=date(2026, 12, 3)) is None
     assert allowlist.accepted_entry("2100000287624", "500 Server Error", today=date(2026, 11, 3)) is None
     assert allowlist.accepted_entry("2100000287625", error, today=date(2026, 11, 3)) is None
+
+
+def test_only_verified_html_responses_match_the_retried_error(fixtures_dir):
+    evidence = json.loads((fixtures_dir / "detail_failures_20261102.json").read_text())
+    examples = [row for row in evidence["records"] if row["target"] == "admrul" and "xhtml" in row["error"]]
+    assert len(examples) == 3
+    for row in examples:
+        observed = date(2026, 11, 28)
+        assert allowlist.is_accepted(row["id"], "sha256=" + row["sha256"], today=observed)
+        assert not allowlist.is_accepted(row["id"], "possible service maintenance", today=observed)

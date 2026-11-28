@@ -1,5 +1,6 @@
 """Shared HTTP request with throttle, retry, and exponential backoff."""
 
+import hashlib
 import logging
 import random
 import re
@@ -46,7 +47,8 @@ def make_request(
                 re.IGNORECASE,
             ):
                 raise requests.RequestException(
-                    "Upstream API returned HTML instead of XML (possible service maintenance)",
+                    "Upstream API returned HTML instead of XML (possible service maintenance); "
+                    f"sha256={hashlib.sha256(resp.content).hexdigest()}",
                     response=resp,
                 )
             return resp

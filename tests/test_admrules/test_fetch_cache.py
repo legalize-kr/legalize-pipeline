@@ -216,6 +216,8 @@ def test_main_prunes_stale_cache_on_full_history_run(monkeypatch, tmp_path):
 
     selection = Mock()
     monkeypatch.setattr(snapshot, "write_current_snapshot", selection)
+    recovered = Mock()
+    monkeypatch.setattr(fetch_cache, "recover_published_details", recovered)
     pruned = []
 
     monkeypatch.setattr(sys, "argv", ["admrules.fetch_cache", "--skip-quota-check", "--published-repo", str(tmp_path)])
@@ -228,7 +230,36 @@ def test_main_prunes_stale_cache_on_full_history_run(monkeypatch, tmp_path):
     fetch_cache.main()
 
     assert selection.call_args.kwargs["repo"] == tmp_path
+    recovered.assert_called_once_with(tmp_path, [{"행정규칙일련번호": "keep"}] * 2)
     assert pruned == [{"keep"}]
+
+
+def test_unreadable_published_history_stops_full_recovery(tmp_path):
+    with pytest.raises(ValueError, match="Expected a published"):
+        fetch_cache.recover_published_details(tmp_path, [])
+
+
+def test_full_fetch_recovers_unlisted_published_xml_before_archiving(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(fetch_cache.cache, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(fetch_cache, "committed_serials", lambda repo: {"1", "2", "3", "4"})
+    monkeypatch.setattr(fetch_cache, "record_requests", lambda *args, **kwargs: None)
+    fetch_cache.cache.put_detail("2", b"previously cached")
+    calls = []
+
+    def fetch(serial, *, refresh):
+        calls.append(serial)
+        assert refresh
+        if serial == "4":
+            raise fetch_cache.NoResultError()
+        fetch_cache.cache.put_detail(serial, b"recovered")
+
+    monkeypatch.setattr(fetch_cache, "get_admrule_detail", fetch)
+    rows = [{"행정규칙일련번호": "1"}]
+    fetch_cache.recover_published_details(tmp_path, rows)
+    assert calls == ["3", "4"]
+    assert "Published admrule 4 has no source detail" in caplog.text
+    assert set(fetch_cache.prune_stale_cache(rows)) == {"2", "3"}
+    assert (tmp_path / "retired/3.xml").read_bytes() == b"recovered"
 
 
 def test_main_does_not_prune_stale_cache_on_partial_run(monkeypatch):
