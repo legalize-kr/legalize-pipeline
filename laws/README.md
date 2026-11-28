@@ -133,7 +133,7 @@ python -m laws.validate
 ```
 WORKSPACE_ROOT/
   .cache/
-    detail/{MST}.xml              # 법령 상세 API 원본 XML
+    detail/{MST}.xml              # 법령 상세 파서 입력 XML, 수리본 포함
     history/{법령명}.json         # 법령별 개정 이력
     .checkpoint.json              # 처리 상태 (processed_msts, last_update)
     .failed_msts.json             # 실패 ledger
@@ -143,7 +143,30 @@ WORKSPACE_ROOT/
     stats.json
 ```
 
-캐시 파일은 원자적 쓰기(tempfile → rename)로 저장되어 병렬 실행에 안전합니다.
+캐시 모듈은 임시 파일을 쓴 뒤 rename으로 교체합니다.
+
+`get_law_detail()`은 파싱과 메타데이터, 조문, 첨부파일 추출을 마친 XML을
+캐시에 저장합니다. 반환값의 `raw_xml`도 이 파서 입력과 같습니다.
+지원하는 오류를 수리했다면 두 값 모두 수리본이며 API 응답 원본을 별도로
+보존하지 않습니다. compiler는 같은 `detail/` 파일을 직접 읽습니다.
+
+캐시에서 읽은 XML을 수리한 경우에도 검증과 추출을 마친 뒤 수리본으로 교체합니다.
+정상 캐시는 다시 쓰지 않으며 수리나 추출이 실패하면 기존 파일을 보존합니다.
+수집기의 기존 캐시 건너뛰기 경로는 파일을 검증하지 않습니다.
+이 계약은 새로 검증해서 저장한 파일에 적용되며 기존 캐시 전체의 검증을 뜻하지 않습니다.
+
+법령 상세 파싱이 실패하면 `api_client.repair_law_xml()`이 미닫힌
+`<조문참고자료>` 수리를 시도합니다. 실제 태그를 CDATA와 주석에서 구분하고,
+조문단위 바로 아래의 참고자료에 CDATA와 XML 공백만 있을 때 수리합니다.
+다음 형제 조문내용이나 참고자료, 부모 조문단위의 종료 태그 앞에만 닫는 태그를 삽입합니다.
+불명확한 구조나 지원하지 않는 오류에는 최초 파싱 예외를 그대로 전달합니다.
+수리 후 파싱과 내용 추출이 성공하면 수리본을 저장하므로 재임포트는 API 없이 동작합니다.
+
+관련 회귀 테스트는 다음 명령으로 실행합니다. 테스트는 임시 캐시를 사용합니다.
+
+```bash
+python -m pytest tests/test_laws/test_repair_xml.py
+```
 
 ## 법령명의 자식 법령
 
